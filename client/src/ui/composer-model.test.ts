@@ -49,7 +49,7 @@ describe('caixa de mensagem (peças puras)', () => {
     for (const status of ['working', 'waiting', 'shell'] as const) expect(composerMode(agent({ status }), ON).kind).toBe('ready');
     // Recurso ligado, mas a sessão sem o plugin: a dica de instalação.
     expect(composerMode(agent({ canMessage: undefined }), ON)).toEqual({ kind: 'hint', text: PLUGIN_HINT });
-    expect(PLUGIN_HINT).toBe('Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)');
+    expect(PLUGIN_HINT).toContain('npm run mod:status');
   });
 
   it('composerMode: quando não dá, diz por quê (a gaveta esconde, o terminal mostra o motivo)', () => {

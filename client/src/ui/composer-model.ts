@@ -7,7 +7,7 @@ import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 import { tr } from '../../../shared/i18n';
 
 /** Dica para quem tem o recurso ligado, mas a sessão do agente não está com o plugin conectado. */
-export const PLUGIN_HINT = tr('Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)');
+export const PLUGIN_HINT = tr('Esta sessão não está recebendo mensagens. Confira se o login do claude no computador está válido (rode claude e /login) e se o plugin está instalado (npm run mod:status).');
 /** A mesma dica para um agente do Codex sem entregador (no modo Node o próprio servidor entrega). */
 export const CODEX_BRIDGE_HINT = tr('Para mandar mensagens ao Codex: com o Habblaud no Docker, deixe npm run codex:bridge rodando; no modo Node funciona sozinho');
 
