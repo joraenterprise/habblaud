@@ -52,11 +52,15 @@ async function runJob(body: object): Promise<JobInfo> {
   return info;
 }
 
+/** Pastas de sistema e temporárias (as sessões de rascunho do app moram aí): nunca viram sugestão de onde criar. */
+const NOT_A_HOME_FOR_PROJECTS = /[\\/](AppData|Temp|tmp|\.cache|Library[\\/]Application Support)([\\/]|$)/i;
+
 /** Pastas-mãe das pastas recentes (onde a pessoa costuma criar projetos), sem repetir. */
 export function parentFolders(paths: readonly string[]): string[] {
   const out: string[] = [];
   for (const p of paths) {
     const parent = p.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]+$/, '');
+    if (NOT_A_HOME_FOR_PROJECTS.test(parent)) continue;
     if (parent && parent !== p && /^(\/|[A-Za-z]:[\\/])./.test(parent) && !out.includes(parent)) out.push(parent);
   }
   return out;
