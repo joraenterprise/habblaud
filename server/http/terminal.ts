@@ -20,6 +20,7 @@ import { createTerminalParser, type TerminalParser } from '../sources/terminal';
 import { sendJson } from './app';
 import { frame } from './sse';
 import { tr } from '../../shared/i18n';
+import { lastAnswer, type AgentAnswer } from '../../shared/answer';
 
 /** Terminais abertos ao mesmo tempo (cada um lê o transcript por conta própria). */
 export const MAX_STREAMS = 8;
@@ -243,6 +244,16 @@ export class TerminalStreams {
   attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
     const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
     this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
+  }
+
+  /**
+   * O último turno da conversa do agente (pedido, resposta final, erro), lido do fim do transcript, para a seção
+   * "Resposta" dos detalhes. Devolve a mensagem do 404 se o agente ou o transcript não existe.
+   */
+  answer(agentId: string): AgentAnswer | string {
+    const source = this.sourceFor(agentId);
+    if (typeof source === 'string') return source;
+    return lastAnswer(source.load().entries);
   }
 
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */

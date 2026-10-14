@@ -9337,3 +9337,64 @@ html.is-replay #world {
 .ui-proj__preview:empty {
   display: none;
 }
+
+/* Resposta do agente nos detalhes (ui/answer.ts). */
+.ui-answer__req {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.ui-answer__err {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--ui-danger, #ff8a8a) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-danger, #ff8a8a) 12%, transparent);
+}
+
+.ui-answer__err-text {
+  margin: 0;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--ui-danger, #ff8a8a);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ui-answer__err-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ui-text);
+}
+
+.ui-answer__body {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+  overflow-wrap: anywhere;
+}
+
+.ui-answer__body.is-clamped {
+  max-height: 340px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+  mask-image: linear-gradient(to bottom, #000 80%, transparent);
+}
+
+.ui-answer__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-faint);
+}
+
+.ui-answer__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ui-answer__actions:not(:has(:not([hidden]))) {
+  display: none;
+}

@@ -201,9 +201,9 @@ export class Deliveries implements UiComponent {
 
   render(): void {
     const store = this.ctx.store;
-    // Só na página do celular (porta remota com login e o terminal liberado): no computador o terminal e o histórico
-    // já mostram tudo, e a barra não ganha botão nem consulta nova sem configurar o acesso pelo celular.
-    const available = access().remote && access().terminal && !!store.snapshot?.meta.terminal && !store.mock && !store.replaying;
+    // Com o terminal liberado (no computador ou no celular com login): a caixinha junta o que cada agente entregou,
+    // para não precisar abrir o terminal de cada um para achar a resposta.
+    const available = access().terminal && !!store.snapshot?.meta.terminal && !store.mock && !store.replaying;
     if (available !== this.available) {
       this.available = available;
       setHidden(this.button, !available);

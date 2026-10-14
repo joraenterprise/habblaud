@@ -99,6 +99,8 @@ export interface ApiDeps {
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
 const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
+/** GET /api/agents/:id/answer: o último turno (pedido, resposta final, erro) para os detalhes do agente. */
+const ANSWER_ROUTE = /^\/api\/agents\/([^/]+)\/answer$/;
 /** POST /api/agents/:id/stop|takeover (terminal interativo). */
 const AGENT_ACTION_ROUTE = /^\/api\/agents\/[^/]+\/(stop|takeover)$/;
 
@@ -399,6 +401,32 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else {
         const own = { account: url.searchParams.get('account') || undefined, session: url.searchParams.get('session') || undefined };
         sendJson(res, 200, modSummary(hub.current(), (id) => office.has(id), deps.version, own));
+      }
+      return true;
+    }
+    const answerMatch = ANSWER_ROUTE.exec(path);
+    if (answerMatch) {
+      // A conversa inteira já é do terminal: a mesma trava (recurso ligado e acesso local ou liberado).
+      if (!isRead) methodNotAllowed(res, 'GET');
+      else if (!terminals) sendJson(res, 403, { error: tr('terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador') });
+      else if (!trusted(req, 'terminal')) sendJson(res, 403, { error: denied(req, tr('a conversa só abre pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      else {
+        let id = '';
+        try {
+          id = decodeURIComponent(answerMatch[1]);
+        } catch {
+          // fica vazio: 400
+        }
+        if (!id) sendJson(res, 400, { error: tr('id inválido') });
+        else {
+          try {
+            const r = terminals.answer(id);
+            if (typeof r === 'string') sendJson(res, 404, { error: r });
+            else sendJson(res, 200, r);
+          } catch (err) {
+            fail(res, err);
+          }
+        }
       }
       return true;
     }

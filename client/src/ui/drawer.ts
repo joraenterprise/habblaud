@@ -1,5 +1,6 @@
 // Gaveta de detalhes (direita): agente ou sala selecionados. Agente do Codex: selo "Codex", textos dele (onde
 // responder, o terminal, a aprovação no lugar do modo de permissão, sem custo) e a dica dos hooks do Codex.
+import { AnswerView } from './answer';
 import type { Activity, AgentInfo, FeedItem, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
 import { roomTheme } from '../art';
 import { createAvatarPlaceholder, updateAvatar } from './avatar';
@@ -207,6 +208,8 @@ class AgentView {
   private accEmail: HTMLElement;
   /** Dica dos hooks do Codex (ao vivo e aprovar pelo escritório), na gaveta de um agente do Codex. */
   private codexHint: HTMLElement;
+  /** Seção "Resposta": o último pedido, a resposta final e o erro (ui/answer.ts). */
+  private answer: AnswerView;
   private roomBtn: HTMLButtonElement;
   private roomName: HTMLElement;
   private gone: HTMLElement;
@@ -402,6 +405,7 @@ class AgentView {
     ]);
     const statsSec = section(tr('Estatísticas'), this.stats.el);
     this.codexHint = h('p', { class: 'ui-codex-hint', hidden: true }, ...richText(CODEX_LIVE_HINT));
+    this.answer = new AnswerView(h('h3', { class: 'ui-sec__title', text: tr('Resposta') }));
 
     this.el = h(
       'div',
@@ -415,6 +419,7 @@ class AgentView {
       this.termWhy,
       this.alert,
       this.perm.el,
+      this.answer.el,
       this.shellBox,
       this.shellsSec.el,
       nowSec.el,
@@ -693,6 +698,8 @@ class AgentView {
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
     const router = this.ctx.terminals;
     const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
+    // A resposta vem da mesma conversa do terminal: aparece quando ele está disponível (e fora do demo e do replay).
+    this.answer.update(live && !this.ctx.store.mock && !this.ctx.store.replaying ? this.last : null, available);
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
