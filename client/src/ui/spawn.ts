@@ -13,6 +13,7 @@ import { DictationButton, dictationAvailable, insertDictation } from './dictatio
 import { h, iconButton, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 import { fetchCustomAgents } from './agents';
+import { ProjectDialog } from './project';
 
 export const SPAWN_PROMPT_MAX = 8_000;
 export const MAX_FILES = 8;
@@ -123,6 +124,10 @@ export class SpawnPanel {
   private readonly agentList: HTMLElement;
   private readonly agentLabel: HTMLElement;
   private readonly otherBtn: HTMLButtonElement;
+  private readonly projectBtn: HTMLButtonElement;
+  private readonly projectDialog: ProjectDialog;
+  /** Pastas criadas agora pelo Novo projeto (o histórico do servidor ainda não as conhece). */
+  private created: FolderOption[] = [];
   private readonly folder: HTMLInputElement;
   private readonly prompt: HTMLTextAreaElement;
   private readonly fileInput: HTMLInputElement;
@@ -145,6 +150,9 @@ export class SpawnPanel {
     this.agentLabel = h('p', { class: 'ui-spawn__label', hidden: true, text: tr('Agente') });
     this.agentList = h('div', { class: 'ui-spawn__agents', role: 'radiogroup', hidden: true, attrs: { 'aria-label': tr('Agente') } });
     this.otherBtn = h('button', { class: 'ui-spawn__other', type: 'button', on: { click: () => this.showOther(true) } }, tr('+ Outra pasta'));
+    this.projectDialog = new ProjectDialog();
+    ctx.root.append(this.projectDialog.el);
+    this.projectBtn = h('button', { class: 'ui-spawn__other', type: 'button', attrs: { title: tr('Criar uma pasta com git (e o repositório no GitHub) ou clonar um repositório') }, on: { click: () => this.newProject() } }, tr('+ Novo projeto'));
     this.folder = h('input', {
       class: 'ui-rename__input ui-spawn__path',
       type: 'text',
@@ -202,7 +210,7 @@ export class SpawnPanel {
         this.agentList,
         h('p', { class: 'ui-spawn__label', attrs: { id: 'ui-spawn-folders-label' }, text: tr('Projeto') }),
         this.folderList,
-        this.otherBtn,
+        h('div', { class: 'ui-spawn__folder-actions' }, this.otherBtn, this.projectBtn),
         this.folder,
         h('label', { class: 'ui-spawn__label', attrs: { for: 'ui-spawn-prompt' }, text: tr('Pedido') }),
         this.prompt,
@@ -320,11 +328,26 @@ export class SpawnPanel {
     setHidden(this.dictate.el, !(await dictationAvailable()));
   }
 
+  private newProject(): void {
+    this.projectDialog.open(
+      this.folders.map((f) => f.path),
+      (path) => {
+        const name = path.split(/[\/]/).pop() || path;
+        this.created = [{ path, name, lastAt: Date.now() }, ...this.created.filter((f) => f.path !== path)];
+        this.setFolders(this.folders);
+        this.pick(path);
+        if (!this.isOpen && this.anchor) this.toggle(this.anchor);
+        this.ctx.announce(tr('Projeto {0} pronto.', [name]));
+      },
+    );
+  }
+
   private setFolders(list: FolderOption[]): void {
-    this.folders = list;
+    const extra = this.created.filter((c) => !list.some((f) => f.path === c.path));
+    this.folders = [...extra, ...list];
     if (!this.selected) {
       const pref = readPref();
-      this.selected = list.some((f) => f.path === pref) ? pref : (list[0]?.path ?? '');
+      this.selected = this.folders.some((f) => f.path === pref) ? pref : (this.folders[0]?.path ?? '');
     }
     this.renderFolders();
   }

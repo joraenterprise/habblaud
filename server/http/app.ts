@@ -19,6 +19,7 @@ import type { SpawnService } from '../spawn/spawn';
 import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
 import type { SpawnFolder } from '../spawn/folders';
 import type { CustomAgentStore } from '../spawn/custom-agents';
+import type { ProjectService } from '../projects/projects';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
@@ -70,6 +71,8 @@ export interface ApiDeps {
   spawnFolders?: () => Promise<SpawnFolder[]>;
   /** Agentes personalizados (/api/custom-agents; spawn/custom-agents.ts). Só com a trava do terminal. */
   customAgents?: CustomAgentStore;
+  /** Novo projeto (/api/projects e, para o auxiliar do host, /api/host/projects/*; projects/projects.ts). */
+  projects?: ProjectService;
   /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
   attachments?: AttachmentStore;
   /** Ditado (/api/dictation e, para o auxiliar do host, /api/host/dictation/*; dictation/dictation.ts). */
@@ -592,6 +595,50 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         readJson(req, 512 * 1024)
           .then((body) => {
             dictation.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
+      return true;
+    }
+    if (path === '/api/projects' || path.startsWith('/api/projects/')) {
+      // Cria pastas e roda git/gh no computador: a mesma trava do Novo agente.
+      const projects = deps.projects;
+      if (!projects) {
+        req.resume();
+        sendJson(res, 403, { error: tr('novo projeto pelo escritório desligado (ligue o Novo agente com HABBLAUD_PTY=1)') });
+      } else if (!trusted(req, 'spawn')) {
+        req.resume();
+        sendJson(res, 403, { error: denied(req, tr('projetos novos só são criados pelo próprio computador (http://localhost)')) });
+      } else if (path === '/api/projects' && isRead) sendJson(res, 200, { available: projects.available() });
+      else if (path === '/api/projects' && method === 'POST') {
+        readJson(req)
+          .then((body) => {
+            const r = projects.submit(body);
+            if ('job' in r) return sendJson(res, 201, r.job);
+            sendJson(res, r.error === 'invalid' ? 400 : r.error === 'too-many' ? 429 : 409, { error: r.reason });
+          })
+          .catch((err) => fail(res, err));
+      } else if (path !== '/api/projects' && isRead) {
+        const info = projects.get(decodeURIComponent(path.slice('/api/projects/'.length)));
+        if (info) sendJson(res, 200, info);
+        else sendJson(res, 404, { error: tr('pedido desconhecido') });
+      } else methodNotAllowed(res, path === '/api/projects' ? 'GET, POST' : 'GET');
+      return true;
+    }
+    if (path === '/api/host/projects/poll' || path === '/api/host/projects/ack') {
+      const projects = deps.projects;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!projects) sendJson(res, 403, { error: tr('novo projeto pelo escritório desligado') });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('só o auxiliar do próprio computador')) });
+      } else if (path === '/api/host/projects/poll') {
+        req.resume();
+        sendJson(res, 200, { projects: projects.poll() });
+      } else {
+        readJson(req)
+          .then((body) => {
+            projects.ack(body);
             sendJson(res, 200, { ok: true });
           })
           .catch((err) => fail(res, err));

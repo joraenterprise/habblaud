@@ -45,6 +45,7 @@ import { runnableClaudeBin } from './claude-bin';
 import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
 import { CustomAgentStore } from './spawn/custom-agents';
+import { ProjectService, runProjectJob } from './projects/projects';
 import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
@@ -202,6 +203,8 @@ const customAgent = (id: string) => customAgents.get(id);
 const spawn = spawnOn
   ? new SpawnService(config.inDocker ? { attachments, customAgent } : { opener: createOpener(), cli: spawnBin ? createCliRunner(spawnBin) : undefined, attachments, customAgent })
   : undefined;
+// Novo projeto (pasta + git/GitHub ou clone): junto com o Novo agente; no Docker, pelo auxiliar do host.
+const projects = spawnOn ? new ProjectService(config.inDocker ? {} : { run: (job) => runProjectJob(job) }) : undefined;
 // Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
 const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
@@ -302,6 +305,7 @@ const api = createApiHandler({
   pty: ptys ? createPtyRoutes(ptys) : undefined,
   spawn,
   customAgents,
+  projects,
   attachments,
   dictation,
   deliveries,

@@ -68,8 +68,11 @@ export class AgentsPanel {
   readonly el: HTMLElement;
   private readonly listView: HTMLElement;
   private readonly list: HTMLElement;
-  private readonly formView: HTMLElement;
+  /** Formulário: modal grande e centralizado (o prompt precisa de espaço). */
+  private readonly dialog: HTMLDialogElement;
   private readonly formTitle: HTMLElement;
+  private readonly formStatus: HTMLElement;
+  private readonly promptCount: HTMLElement;
   private readonly name: HTMLInputElement;
   private readonly idHint: HTMLElement;
   private readonly description: HTMLTextAreaElement;
@@ -104,7 +107,7 @@ export class AgentsPanel {
       h('p', { class: 'ui-rename__hint', text: tr('Cada agente é um papel com instruções próprias. "Usar" começa uma sessão do Claude Code já como ele. Para montar um conversando, rode /criar-agente no Claude Code.') }),
     );
 
-    this.formTitle = h('h3', { class: 'ui-agents__title' });
+    this.formTitle = h('h2');
     this.name = h('input', { class: 'ui-rename__input', type: 'text', attrs: { id: 'ui-agent-name', maxlength: AGENT_NAME_MAX, placeholder: tr('Ex.: Revisor de código'), autocomplete: 'off' } });
     this.idHint = h('p', { class: 'ui-agents__id' });
     this.name.addEventListener('input', () => this.renderId());
@@ -114,7 +117,12 @@ export class AgentsPanel {
     });
     this.prompt = h('textarea', {
       class: 'ui-rename__input ui-spawn__prompt ui-agents__prompt',
-      attrs: { id: 'ui-agent-prompt', rows: 8, maxlength: AGENT_PROMPT_MAX, placeholder: tr('Instruções: quem o agente é, como trabalha, o que entrega e o que evita.') },
+      attrs: {
+        id: 'ui-agent-prompt',
+        rows: 20,
+        maxlength: AGENT_PROMPT_MAX,
+        placeholder: tr('Instruções do agente (o prompt de sistema dele):\n\n- Quem ele é e qual o objetivo\n- Como trabalha, passo a passo\n- O que entrega e em que formato\n- O que nunca deve fazer e quando parar para perguntar'),
+      },
     });
     this.model = h('select', { class: 'ui-rename__input', attrs: { id: 'ui-agent-model' } });
     for (const m of [...AGENT_MODELS, '*']) this.model.append(h('option', { attrs: { value: m } }, m === '*' ? tr('Outro…') : modelLabel(m)));
@@ -128,27 +136,48 @@ export class AgentsPanel {
     for (const f of [this.name, this.description, this.prompt, this.modelOther, this.toolsExtra, this.folder]) stop(f);
     this.saveBtn = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow ui-agents__save', type: 'button', on: { click: () => void this.save() } }, tr('Salvar'));
     this.deleteBtn = h('button', { class: 'ui-btn ui-agents__delete', type: 'button', on: { click: () => void this.remove() } }, tr('Apagar'));
-    const back = h('button', { class: 'ui-btn', type: 'button', on: { click: () => this.showList() } }, tr('Voltar'));
+    const cancel = h('button', { class: 'ui-btn', type: 'button', on: { click: () => this.closeForm() } }, tr('Cancelar'));
     const label = (id: string, text: string) => h('label', { class: 'ui-spawn__label', attrs: { for: id }, text });
-    this.formView = h(
-      'div',
-      { class: 'ui-set-group ui-agents__view', hidden: true },
-      this.formTitle,
-      label('ui-agent-name', tr('Nome')),
-      this.name,
-      this.idHint,
-      label('ui-agent-desc', tr('Quando usar')),
-      this.description,
-      label('ui-agent-prompt', tr('Instruções')),
-      this.prompt,
-      h('div', { class: 'ui-agents__row' }, h('div', {}, label('ui-agent-model', tr('Modelo')), this.model, this.modelOther), h('div', {}, label('ui-agent-perm', tr('Permissões')), this.permission)),
-      h('p', { class: 'ui-spawn__label', text: tr('Ferramentas (nenhuma marcada = todas)') }),
-      this.toolChips,
-      this.toolsExtra,
-      label('ui-agent-folder', tr('Pasta sugerida')),
-      this.folder,
-      h('div', { class: 'ui-agents__actions' }, back, this.deleteBtn, this.saveBtn),
-    );
+    this.promptCount = h('span', { class: 'ui-agent-modal__count' });
+    this.prompt.addEventListener('input', () => this.renderCount());
+    this.formStatus = h('p', { class: 'ui-rename__hint ui-spawn__status', attrs: { role: 'status', 'aria-live': 'polite' } });
+    const closeForm = iconButton(ICONS.close, tr('Fechar'), () => this.closeForm(), 'ui-icon-btn--sm');
+    this.dialog = h(
+      'dialog',
+      { class: 'ui-dialog ui-agent-modal', attrs: { 'aria-label': tr('Agente personalizado') } },
+      h('div', { class: 'ui-dialog__head' }, this.formTitle, closeForm),
+      h(
+        'div',
+        { class: 'ui-agent-modal__body' },
+        h(
+          'div',
+          { class: 'ui-agent-modal__side' },
+          label('ui-agent-name', tr('Nome')),
+          this.name,
+          this.idHint,
+          label('ui-agent-desc', tr('Quando usar')),
+          this.description,
+          h('div', { class: 'ui-agents__row' }, h('div', {}, label('ui-agent-model', tr('Modelo')), this.model, this.modelOther), h('div', {}, label('ui-agent-perm', tr('Permissões')), this.permission)),
+          h('p', { class: 'ui-spawn__label', text: tr('Ferramentas (nenhuma marcada = todas)') }),
+          this.toolChips,
+          this.toolsExtra,
+          label('ui-agent-folder', tr('Pasta sugerida')),
+          this.folder,
+        ),
+        h('div', { class: 'ui-agent-modal__main' }, h('div', { class: 'ui-agent-modal__prompt-head' }, label('ui-agent-prompt', tr('Instruções')), this.promptCount), this.prompt),
+      ),
+      h('div', { class: 'ui-agent-modal__foot' }, this.formStatus, h('div', { class: 'ui-agents__actions' }, this.deleteBtn, cancel, this.saveBtn)),
+    ) as HTMLDialogElement;
+    this.dialog.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void this.save();
+      }
+    });
+    this.dialog.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      this.closeForm();
+    });
     this.status = h('p', { class: 'ui-rename__hint ui-spawn__status', attrs: { role: 'status', 'aria-live': 'polite' } });
     const close = iconButton(ICONS.close, tr('Fechar'), () => this.hide(), 'ui-icon-btn--sm');
     this.el = h(
@@ -156,9 +185,9 @@ export class AgentsPanel {
       { class: 'ui-popover ui-spawn ui-agents', role: 'dialog', tabIndex: -1, attrs: { 'aria-label': tr('Agentes'), id: 'ui-agents', popover: 'auto' } },
       h('div', { class: 'ui-popover__head' }, h('h2', { text: tr('Agentes') }), close),
       this.listView,
-      this.formView,
       h('div', { class: 'ui-agents__foot' }, this.status),
     );
+    ctx.root.append(this.dialog);
     this.el.addEventListener('toggle', () => this.anchor?.setAttribute('aria-expanded', String(this.isOpen)));
   }
 
@@ -246,10 +275,19 @@ export class AgentsPanel {
 
   private showList(): void {
     this.editing = null;
-    setHidden(this.formView, true);
-    setHidden(this.listView, false);
-    this.say('');
     this.renderList();
+  }
+
+  /** Fecha o modal e volta para a lista (reabre o popover, que o modal fechou). */
+  private closeForm(): void {
+    if (this.busy) return;
+    if (this.dialog.open) this.dialog.close();
+    this.showList();
+    if (!this.isOpen && this.anchor) this.toggle(this.anchor);
+  }
+
+  private renderCount(): void {
+    setText(this.promptCount, `${this.prompt.value.length.toLocaleString()} / ${AGENT_PROMPT_MAX.toLocaleString()}`);
   }
 
   private edit(a: CustomAgent | null): void {
@@ -269,10 +307,11 @@ export class AgentsPanel {
     setHidden(this.deleteBtn, !a);
     this.renderTools();
     this.renderId();
-    this.say('');
-    setHidden(this.listView, true);
-    setHidden(this.formView, false);
-    this.name.focus();
+    this.renderCount();
+    this.sayForm('');
+    this.hide();
+    if (!this.dialog.open) this.dialog.showModal();
+    (a ? this.prompt : this.name).focus();
   }
 
   private renderId(): void {
@@ -333,11 +372,12 @@ export class AgentsPanel {
         body: JSON.stringify(this.input()),
       });
       this.agents = [...this.agents.filter((a) => a.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name));
-      this.showList();
+      this.busy = false;
+      this.closeForm();
       this.say(tr('{0} salvo.', [saved.name]));
       this.ctx.announce(tr('Agente {0} salvo.', [saved.name]));
     } catch (err) {
-      this.say(tr('Não salvou: {0}', [(err as Error).message]), true);
+      this.sayForm(tr('Não salvou: {0}', [(err as Error).message]), true);
     } finally {
       this.busy = false;
       this.saveBtn.disabled = false;
@@ -352,13 +392,19 @@ export class AgentsPanel {
     try {
       await api(`/api/custom-agents/${encodeURIComponent(a.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       this.agents = this.agents.filter((x) => x.id !== a.id);
-      this.showList();
+      this.busy = false;
+      this.closeForm();
       this.say(tr('{0} apagado.', [a.name]));
     } catch (err) {
-      this.say(tr('Não apagou: {0}', [(err as Error).message]), true);
+      this.sayForm(tr('Não apagou: {0}', [(err as Error).message]), true);
     } finally {
       this.busy = false;
     }
+  }
+
+  private sayForm(text: string, error = false): void {
+    setText(this.formStatus, text);
+    this.formStatus.classList.toggle('is-error', error);
   }
 
   private say(text: string, error = false): void {

@@ -22,6 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
 import { tr } from '../shared/i18n';
+import { parseProjectJob, runProjectJob, type ProjectResult, type ProjectJob } from '../server/projects/projects';
 import { createCliRunner, createOpener, folderProblem, launch, parseSpawn, type CliRunner, type Opener, type SpawnHow } from '../server/spawn/spawn';
 import { runnableClaudeBin } from '../server/claude-bin';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
@@ -251,6 +252,33 @@ export async function spawnRound(
 }
 
 /**
+ * Projetos novos pelo escritório: busca os pedidos (POST /api/host/projects/poll), confere cada um, roda aqui (pasta,
+ * git, gh) e confirma em /api/host/projects/ack. Nunca lança.
+ */
+export async function projectRound(
+  post: Post,
+  log: (line: string) => void = () => {},
+  run: (job: ProjectJob) => Promise<ProjectResult> = (job) => runProjectJob(job),
+): Promise<RoundResult> {
+  const polled = await post('/api/host/projects/poll', {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.projects;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: Array<{ id: string } & (ProjectResult | { ok: false; error: string })> = [];
+  for (const raw of list) {
+    const id = typeof rec(raw)?.id === 'string' ? (rec(raw)!.id as string) : '';
+    if (!id) continue;
+    const job = parseProjectJob(raw);
+    const r: ProjectResult = 'error' in job ? { ok: false, error: job.error } : await run(job);
+    results.push({ id, ...r });
+    if (!r.ok) log(tr('✗ projeto: {0}', [r.error]));
+    else if (r.kind !== 'info') log(r.note ? tr('✓ projeto em {0} ({1})', [r.path, r.note]) : tr('✓ projeto em {0}', [r.path]));
+  }
+  if (results.length) await post('/api/host/projects/ack', { results });
+  return { state: 'ok', results: results.map((r) => ({ id: r.id, ok: r.ok })) as BridgeResult[] };
+}
+
+/**
  * Ditado: busca os áudios (POST /api/host/dictation/poll), transcreve cada um com o Whisper local e devolve o texto e
  * o idioma em /api/host/dictation/ack. O texto nunca vai para a tela. Nunca lança.
  */
@@ -377,6 +405,7 @@ async function main(): Promise<void> {
     if (Date.now() >= spawnRetryAt) {
       spawned = await spawnRound(post, open, log, undefined, undefined, cli);
       if (spawned.state === 'refused') spawnRetryAt = Date.now() + REFUSED_RETRY_MS;
+      else await projectRound(post, log);
     }
     const r = run ? await round(post, run, log) : spawned;
     const state =
