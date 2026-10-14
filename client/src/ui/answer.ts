@@ -18,6 +18,7 @@ export class AnswerView {
   private readonly body: HTMLElement;
   private readonly empty: HTMLElement;
   private readonly expand: HTMLButtonElement;
+  private readonly chatBtn: HTMLButtonElement;
   private readonly copy: HTMLButtonElement;
   private id = '';
   private key = '';
@@ -27,14 +28,19 @@ export class AnswerView {
   private current: AgentAnswer | null = null;
   private expanded = false;
 
-  constructor(title: HTMLElement) {
+  constructor(
+    title: HTMLElement,
+    /** Abre a conversa inteira no modal do centro (ui/chat.ts). */
+    private readonly openChat?: (agentId: string) => void,
+  ) {
     this.request = h('p', { class: 'ui-answer__req' });
     this.errorText = h('p', { class: 'ui-answer__err-text' });
     this.errorHint = h('p', { class: 'ui-answer__err-hint' });
     this.error = h('div', { class: 'ui-answer__err', role: 'alert', hidden: true }, this.errorText, this.errorHint);
     this.body = h('div', { class: 'ui-answer__body ui-md' });
     this.empty = h('p', { class: 'ui-answer__empty', text: tr('Ainda sem resposta neste turno.') });
-    this.expand = h('button', { class: 'ui-btn ui-answer__more', type: 'button', hidden: true, on: { click: () => this.toggleExpand() } }, tr('Ver tudo'));
+    this.expand = h('button', { class: 'ui-btn ui-answer__more', type: 'button', hidden: true, on: { click: () => this.showAll() } }, tr('Ver tudo'));
+    this.chatBtn = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow ui-answer__more', type: 'button', on: { click: () => this.id && this.openChat?.(this.id) } }, tr('Conversar'));
     this.copy = h(
       'button',
       {
@@ -64,7 +70,7 @@ export class AnswerView {
       this.error,
       this.body,
       this.empty,
-      h('div', { class: 'ui-answer__actions' }, this.expand, this.copy),
+      h('div', { class: 'ui-answer__actions' }, this.chatBtn, this.expand, this.copy),
     );
   }
 
@@ -109,7 +115,9 @@ export class AnswerView {
     }
   }
 
-  private toggleExpand(): void {
+  /** "Ver tudo": a conversa inteira no modal; sem ele (nunca deveria faltar), expande aqui mesmo. */
+  private showAll(): void {
+    if (this.openChat && this.id) return this.openChat(this.id);
     this.expanded = !this.expanded;
     this.render();
   }
@@ -134,7 +142,8 @@ export class AnswerView {
     setHidden(this.empty, !!a?.answer || !!a?.error || !a);
     const long = (a?.answer?.length ?? 0) > 900;
     setHidden(this.expand, !long);
-    setText(this.expand, this.expanded ? tr('Recolher') : tr('Ver tudo'));
+    setText(this.expand, this.expanded && !this.openChat ? tr('Recolher') : tr('Ver tudo'));
+    setHidden(this.chatBtn, !this.openChat);
     setHidden(this.copy, !a?.answer);
   }
 }

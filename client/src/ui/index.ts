@@ -20,6 +20,7 @@ import { FeedPanel } from './feed';
 import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
 import { Deliveries } from './deliveries';
+import { ChatDialog } from './chat';
 import { HoverTip } from './hovertip';
 import { hasRunningShells } from './model';
 import { hasCodexPermission } from './provider';
@@ -212,6 +213,9 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     if (url.search && location.search === url.search) window.history.replaceState(null, '', location.pathname);
   };
   if (typeof location !== 'undefined') openLink(new URL(location.href));
+  // Conversa com o agente no centro da tela (Ver tudo / Conversar nos detalhes).
+  const chat = new ChatDialog(ctx);
+  ctx.openChat = (id) => chat.open(id);
   drawer = new Drawer(ctx, terminal, pty);
   const feed = new FeedPanel(ctx);
   const toasts = new Toasts(ctx);
@@ -233,7 +237,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, deliveries.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, deliveries.el, help.el, renamer.el, chat.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -242,7 +246,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, chat, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;

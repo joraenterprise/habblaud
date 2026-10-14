@@ -275,6 +275,37 @@ function questionsText(raw: unknown): string {
     .join('\n\n');
 }
 
+/** Ferramentas que escrevem arquivos (o caminho vira a lista de arquivos do agente). */
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+const FILES_MAX = 20;
+
+/** Caminho absoluto: como veio, ou relativo à pasta da sessão. Aceita os do Windows (C:\...) em qualquer sistema. */
+function absolutePath(p: string, cwd: string | undefined): string | undefined {
+  const t = p.trim();
+  if (!t || t.includes('\0')) return undefined;
+  if (t.startsWith('/') || /^[A-Za-z]:[\\/]/.test(t)) return t;
+  if (!cwd) return undefined;
+  const sep = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.includes('\\') ? '\\' : '/';
+  return `${cwd.replace(/[\\/]+$/, '')}${sep}${t.replace(/^\.[\\/]/, '')}`;
+}
+
+/** Arquivos que uma chamada escreveu, editou ou mandou (caminhos absolutos, sem repetir). */
+export function toolFiles(name: string, input: Rec, cwd?: string): string[] {
+  const raw: string[] = [];
+  if (WRITE_TOOLS.has(name)) {
+    const p = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path);
+    if (p) raw.push(p);
+  } else if (name === 'SendUserFile' && Array.isArray(input.files)) {
+    for (const f of input.files) if (typeof f === 'string') raw.push(f);
+  }
+  const out = new Set<string>();
+  for (const p of raw.slice(0, FILES_MAX)) {
+    const abs = absolutePath(p, cwd);
+    if (abs && abs.length <= 1_024) out.add(abs);
+  }
+  return [...out];
+}
+
 /**
  * Título e argumentos de uma chamada de ferramenta, no estilo do Claude Code: "Bash(npm test)".
  * Também usado pelos pedidos de permissão (server/permissions/).
@@ -694,6 +725,8 @@ class Parser implements TerminalParser {
           const name = str(b.name) ?? 'ferramenta';
           const view = toolView(name, rec(b.input) ?? {}, c.cwd);
           const e: ToolEntry = { kind: 'tool', id: str(b.id) ?? id, at: c.at, tool: name, title: maskSecrets(view.title) };
+          const files = toolFiles(name, rec(b.input) ?? {}, c.cwd);
+          if (files.length) e.files = files;
           if (view.input) {
             e.input = view.input;
             e.inputKind = view.inputKind;

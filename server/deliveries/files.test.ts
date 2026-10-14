@@ -5,9 +5,10 @@ describe('arquivos das entregas', () => {
   it('só tipos de ver e nada com cara de segredo', () => {
     expect(fileType('/a/b.PNG')).toEqual({ kind: 'image', type: 'image/png' });
     expect(fileType('/a/b.pdf')?.kind).toBe('pdf');
-    expect(fileType('/a/b.json')).toBeUndefined();
+    expect(fileType('/a/b.json')?.kind).toBe('text');
+    expect(fileType('/a/b.exe')).toBeUndefined();
     expect(pathProblem('/Users/a/p/relatorio.pdf')).toBeUndefined();
-    for (const bad of ['/Users/a/.ssh/x.png', '/Users/a/p/.env.png', '/Users/a/p/secret-plan.pdf', '/Users/a/p/server.key', '/Users/a/.aws/c.txt', '/Users/a/.habblaud/remote-tls/ca.pdf', 'rel.png', '/a/../b.png', '/a/b.sh', '/a/id_ed25519']) {
+    for (const bad of ['/Users/a/.ssh/x.png', '/Users/a/p/.env.png', '/Users/a/p/secret-plan.pdf', '/Users/a/p/server.key', '/Users/a/.aws/c.txt', '/Users/a/.habblaud/remote-tls/ca.pdf', 'rel.png', '/a/../b.png', '/a/b.exe', '/a/id_ed25519']) {
       expect(pathProblem(bad), bad).toBeDefined();
     }
   });
@@ -32,5 +33,17 @@ describe('arquivos das entregas', () => {
     expect(insideKnownFolder('/Users/ana/Documents/extrato.pdf', opts)).toBe(false);
     expect(insideKnownFolder('/Users/ana/lojas/a.png', opts)).toBe(false);
     expect(insideKnownFolder('/tmpx/a.png', opts)).toBe(false);
+  });
+});
+
+describe('arquivos no Windows e código', () => {
+  it('aceita caminhos do Windows e extensões de código, sem abrir segredos', async () => {
+    const { pathProblem } = await import('./files');
+    expect(pathProblem('C:\\Users\\f\\proj\\relatorio.md')).toBeUndefined();
+    expect(pathProblem('C:/Users/f/proj/src/app.ts')).toBeUndefined();
+    expect(pathProblem('C:\\Users\\f\\proj\\.env')).toBeDefined();
+    expect(pathProblem('C:\\Users\\f\\.ssh\\id_rsa.pub')).toBeDefined();
+    expect(pathProblem('C:\\Users\\f\\proj\\..\\x.md')).toBeDefined();
+    expect(pathProblem('relativo/x.md')).toBeDefined();
   });
 });

@@ -1,4 +1,6 @@
 // Rotas da API (/api/*). Respostas JSON; rotas desconhecidas -> 404 JSON.
+import { agentFiles, fileName, hasAgentFile } from '../../shared/agent-files';
+import { fileType, pathProblem } from '../deliveries/files';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
 import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
@@ -99,6 +101,8 @@ export interface ApiDeps {
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
 const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
+/** GET /api/agents/:id/files e /api/agents/:id/file?path=...: arquivos que o agente escreveu, editou, mandou ou citou. */
+const FILES_ROUTE = /^\/api\/agents\/([^/]+)\/(files|file)$/;
 /** GET /api/agents/:id/answer: o último turno (pedido, resposta final, erro) para os detalhes do agente. */
 const ANSWER_ROUTE = /^\/api\/agents\/([^/]+)\/answer$/;
 /** POST /api/agents/:id/stop|takeover (terminal interativo). */
@@ -171,12 +175,13 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
  * Anexo de entrega. Páginas e SVG vêm numa sandbox sem scripts (CSP), para não rodarem com o login do escritório;
  * PDF e imagens podem abrir dentro do modal (mesma origem).
  */
-function sendFile(res: ServerResponse, data: Buffer, type: string, name: string): void {
+function sendFile(res: ServerResponse, data: Buffer, type: string, name: string, fresh = false): void {
   const active = /^text\/html|^image\/svg/.test(type);
   res.writeHead(200, {
     'Content-Type': type,
     'Content-Length': data.length,
-    'Cache-Control': 'private, max-age=300',
+    // Arquivos de um agente podem mudar a qualquer momento (ele reescreve): sem cache no navegador.
+    'Cache-Control': fresh ? 'no-store' : 'private, max-age=300',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'SAMEORIGIN',
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
@@ -401,6 +406,45 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else {
         const own = { account: url.searchParams.get('account') || undefined, session: url.searchParams.get('session') || undefined };
         sendJson(res, 200, modSummary(hub.current(), (id) => office.has(id), deps.version, own));
+      }
+      return true;
+    }
+    const filesMatch = FILES_ROUTE.exec(path);
+    if (filesMatch) {
+      // Conversa e arquivos do agente: a mesma trava do terminal.
+      if (!isRead) methodNotAllowed(res, 'GET');
+      else if (!terminals) sendJson(res, 403, { error: tr('terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador') });
+      else if (!trusted(req, 'terminal')) sendJson(res, 403, { error: denied(req, tr('os arquivos só abrem pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      else {
+        let id = '';
+        try {
+          id = decodeURIComponent(filesMatch[1]);
+        } catch {
+          // fica vazio: 400
+        }
+        const entries = id ? terminals.entries(id) : tr('id inválido');
+        if (typeof entries === 'string') sendJson(res, id ? 404 : 400, { error: entries });
+        else {
+          const roomId = office.detail(id)?.agent.roomId;
+          const files = agentFiles(entries, roomId ? office.roomPath(roomId) : undefined);
+          if (filesMatch[2] === 'files') sendJson(res, 200, { files: files.map((f) => ({ ...f, viewable: !pathProblem(f.path) })) });
+          else {
+            const want = url.searchParams.get('path') ?? '';
+            const problem = pathProblem(want);
+            const type = fileType(want);
+            if (!want || !hasAgentFile(files, want)) sendJson(res, 404, { error: tr('arquivo desconhecido para este agente') });
+            else if (problem || !type) sendJson(res, 403, { error: problem ?? tr('tipo de arquivo que não se mostra aqui') });
+            else if (!deps.files) sendJson(res, 503, { error: tr('leitura de arquivos desligada') });
+            else
+              deps.files
+                .get(want, { fresh: true })
+                .then((r) => {
+                  if ('error' in r) return sendJson(res, r.status, { error: r.error });
+                  sendFile(res, r.data, type.type, fileName(want), true);
+                })
+                .catch((err) => fail(res, err));
+          }
+        }
       }
       return true;
     }

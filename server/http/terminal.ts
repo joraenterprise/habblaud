@@ -251,9 +251,15 @@ export class TerminalStreams {
    * "Resposta" dos detalhes. Devolve a mensagem do 404 se o agente ou o transcript não existe.
    */
   answer(agentId: string): AgentAnswer | string {
+    const entries = this.entries(agentId);
+    return typeof entries === 'string' ? entries : lastAnswer(entries);
+  }
+
+  /** As entradas recentes da conversa do agente (o mesmo `init` do terminal), ou a mensagem do 404. */
+  entries(agentId: string): TerminalEntry[] | string {
     const source = this.sourceFor(agentId);
     if (typeof source === 'string') return source;
-    return lastAnswer(source.load().entries);
+    return source.load().entries;
   }
 
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */

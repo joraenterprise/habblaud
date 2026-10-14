@@ -66,6 +66,8 @@ export interface UiContext {
   focusSearch(): void;
   /** Abre a ajuda; com `section`, rola até ela (ex.: "usage" = Contas e uso). */
   openHelp(section?: HelpSection): void;
+  /** Abre a conversa com o agente no modal do centro (ui/chat.ts). */
+  openChat?(agentId: string): void;
   toggleSettings(): void;
   /** Abre o campo de renomear a sala perto do ponto (px da janela); botão direito na sala (ui/roomrename.ts). */
   renameRoom?(roomId: string, at: { x: number; y: number }): void;

@@ -405,7 +405,7 @@ class AgentView {
     ]);
     const statsSec = section(tr('Estatísticas'), this.stats.el);
     this.codexHint = h('p', { class: 'ui-codex-hint', hidden: true }, ...richText(CODEX_LIVE_HINT));
-    this.answer = new AnswerView(h('h3', { class: 'ui-sec__title', text: tr('Resposta') }));
+    this.answer = new AnswerView(h('h3', { class: 'ui-sec__title', text: tr('Resposta') }), (id) => ctx.openChat?.(id));
 
     this.el = h(
       'div',

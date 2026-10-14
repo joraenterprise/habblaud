@@ -28,7 +28,47 @@ const TYPES: Readonly<Record<string, { kind: DeliveryAttachmentKind; type: strin
   txt: { kind: 'text', type: 'text/plain; charset=utf-8' },
   csv: { kind: 'text', type: 'text/plain; charset=utf-8' },
   log: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  tsv: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  json: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  jsonl: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  yaml: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  yml: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  xml: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  toml: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  sql: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  ts: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  tsx: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  js: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  jsx: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  mjs: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  cjs: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  py: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  rb: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  go: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  rs: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  java: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  kt: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  cs: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  php: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  c: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  h: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  cpp: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  swift: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  vue: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  svelte: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  css: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  scss: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  sh: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  ps1: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  bat: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  prisma: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  graphql: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  mermaid: { kind: 'text', type: 'text/plain; charset=utf-8' },
+  mmd: { kind: 'text', type: 'text/plain; charset=utf-8' },
   xlsx: { kind: 'file', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  xls: { kind: 'file', type: 'application/vnd.ms-excel' },
+  odt: { kind: 'file', type: 'application/vnd.oasis.opendocument.text' },
+  ods: { kind: 'file', type: 'application/vnd.oasis.opendocument.spreadsheet' },
   docx: { kind: 'file', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
   pptx: { kind: 'file', type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
   zip: { kind: 'file', type: 'application/zip' },
@@ -49,11 +89,18 @@ export function fileType(path: string): { kind: DeliveryAttachmentKind; type: st
   return TYPES[extensionOf(path)];
 }
 
+/** Caminho absoluto do Unix (/...) ou do Windows (C:\... ou C:/...). */
+export function isAbsoluteAnyOs(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
 /** Motivo para NÃO mostrar o caminho (só olhando o texto), ou undefined. */
 export function pathProblem(path: string): string | undefined {
-  if (!path || path.includes('\0') || !path.startsWith('/') || /(^|\/)\.\.(\/|$)/.test(path)) return tr('caminho inválido');
+  // As regras olham o caminho com barras normais: as do Windows também passam por elas.
+  const p = path.replace(/\\/g, '/');
+  if (!path || path.includes('\0') || !isAbsoluteAnyOs(path) || /(^|\/)\.\.(\/|$)/.test(p)) return tr('caminho inválido');
   if (!fileType(path)) return tr('tipo de arquivo que não se mostra aqui');
-  if (SECRET_DIRS.test(path) || SECRET_NAMES.test(path)) return tr('arquivo protegido');
+  if (SECRET_DIRS.test(p) || SECRET_NAMES.test(p)) return tr('arquivo protegido');
   return undefined;
 }
 
@@ -99,10 +146,13 @@ export function insideKnownFolder(
   path: string,
   opts: { accountDirs: readonly string[]; roots: readonly string[]; exists?: (p: string) => boolean },
 ): boolean {
-  if (opts.roots.some((r) => r && path.startsWith(`${r.replace(/\/+$/, '')}/`))) return true;
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const target = norm(path);
+  if (opts.roots.some((r) => r && target.startsWith(`${norm(r)}/`))) return true;
   const exists = opts.exists ?? existsSync;
   // Mesma codificação de sources/watcher.ts (encodeCwd): todo caractere não alfanumérico vira "-".
-  for (let dir = dirname(path); dir.split('/').filter(Boolean).length >= 2; dir = dirname(dir)) {
+  // No Windows a pasta tem barras invertidas e letra de unidade (C:\Users\voce -> C--Users-voce).
+  for (let dir = dirname(path); dir.split(/[\\/]/).filter(Boolean).length >= 2 && dir !== dirname(dir); dir = dirname(dir)) {
     const encoded = dir.replace(/[^a-zA-Z0-9]/g, '-');
     if (opts.accountDirs.some((acc) => exists(join(acc, 'projects', encoded)))) return true;
   }
