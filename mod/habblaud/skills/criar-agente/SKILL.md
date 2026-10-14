@@ -88,7 +88,8 @@ rm -f "$TMP"
 - `400`: a mensagem diz o campo errado; corrija e envie de novo.
 
 Para apagar (só se o usuário pedir, confirmando antes):
-`curl -sS -X DELETE "http://127.0.0.1:$PORT/api/custom-agents/<id>"`.
+`curl -sS -X DELETE -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PORT/api/custom-agents/<id>"`
+(o Habblaud exige `Content-Type: application/json` em tudo que muda estado).
 
 ## 5. Conte como usar
 

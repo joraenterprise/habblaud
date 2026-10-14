@@ -350,7 +350,7 @@ export class AgentsPanel {
     if (!confirm(tr('Apagar o agente {0}? As sessões que já começaram continuam.', [a.name]))) return;
     this.busy = true;
     try {
-      await api(`/api/custom-agents/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+      await api(`/api/custom-agents/${encodeURIComponent(a.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       this.agents = this.agents.filter((x) => x.id !== a.id);
       this.showList();
       this.say(tr('{0} apagado.', [a.name]));
