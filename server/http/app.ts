@@ -102,7 +102,7 @@ export interface ApiDeps {
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
 const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
 /** GET /api/agents/:id/files e /api/agents/:id/file?path=...: arquivos que o agente escreveu, editou, mandou ou citou. */
-const FILES_ROUTE = /^\/api\/agents\/([^/]+)\/(files|file)$/;
+const FILES_ROUTE = /^\/api\/agents\/([^/]+)\/(files|file|pdf)$/;
 /** GET /api/agents/:id/answer: o último turno (pedido, resposta final, erro) para os detalhes do agente. */
 const ANSWER_ROUTE = /^\/api\/agents\/([^/]+)\/answer$/;
 /** POST /api/agents/:id/stop|takeover (terminal interativo). */
@@ -411,8 +411,13 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     }
     const filesMatch = FILES_ROUTE.exec(path);
     if (filesMatch) {
-      // Conversa e arquivos do agente: a mesma trava do terminal.
-      if (!isRead) methodNotAllowed(res, 'GET');
+      // Conversa e arquivos do agente: a mesma trava do terminal. Gerar PDF roda um programa no computador: a do Novo agente também.
+      const wantsPdf = filesMatch[2] === 'pdf';
+      if (wantsPdf ? method !== 'POST' : !isRead) methodNotAllowed(res, wantsPdf ? 'POST' : 'GET');
+      else if (wantsPdf && (!deps.projects || !trusted(req, 'spawn'))) {
+        req.resume();
+        sendJson(res, 403, { error: tr('gerar PDF pelo escritório precisa do Novo agente ligado (HABBLAUD_PTY=1) e acesso pelo próprio computador') });
+      }
       else if (!terminals) sendJson(res, 403, { error: tr('terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador') });
       else if (!trusted(req, 'terminal')) sendJson(res, 403, { error: denied(req, tr('os arquivos só abrem pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       else {
@@ -427,7 +432,17 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         else {
           const roomId = office.detail(id)?.agent.roomId;
           const files = agentFiles(entries, roomId ? office.roomPath(roomId) : undefined);
-          if (filesMatch[2] === 'files') sendJson(res, 200, { files: files.map((f) => ({ ...f, viewable: !pathProblem(f.path) })) });
+          if (wantsPdf)
+            readJson(req)
+              .then((body) => {
+                const source = typeof (body as { path?: unknown })?.path === 'string' ? (body as { path: string }).path : '';
+                if (!source || !/\.html?$/i.test(source) || !hasAgentFile(files, source)) throw new HttpError(400, tr('escolha um arquivo HTML deste agente'));
+                const r = deps.projects!.submit({ kind: 'pdf', source });
+                if ('job' in r) return sendJson(res, 201, r.job);
+                sendJson(res, r.error === 'invalid' ? 400 : r.error === 'too-many' ? 429 : 409, { error: r.reason });
+              })
+              .catch((err) => fail(res, err));
+          else if (filesMatch[2] === 'files') sendJson(res, 200, { files: files.map((f) => ({ ...f, viewable: !pathProblem(f.path) })) });
           else {
             const want = url.searchParams.get('path') ?? '';
             const problem = pathProblem(want);

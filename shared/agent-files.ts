@@ -91,8 +91,13 @@ export function agentFiles(entries: readonly TerminalEntry[], project?: string):
   return [...byKey.values()].sort((a, b) => b.at - a.at).slice(0, AGENT_FILES_MAX);
 }
 
-/** O caminho está na lista do agente? (mesma comparação usada para não repetir). */
+/**
+ * O caminho está na lista do agente? (mesma comparação usada para não repetir). Também vale o PDF gerado pelo
+ * escritório ao lado de um HTML do agente (relatorio.html -> relatorio.pdf).
+ */
 export function hasAgentFile(files: readonly AgentFile[], path: string): boolean {
   const k = keyOf(path);
-  return files.some((f) => keyOf(f.path) === k);
+  if (files.some((f) => keyOf(f.path) === k)) return true;
+  if (!/\.pdf$/i.test(path)) return false;
+  return files.some((f) => /\.html?$/i.test(f.path) && keyOf(f.path).replace(/\.html?$/i, '.pdf') === k.replace(/\.pdf$/i, '.pdf'));
 }

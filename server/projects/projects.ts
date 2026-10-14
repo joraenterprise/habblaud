@@ -4,17 +4,21 @@
 // - Docker: o auxiliar do host (scripts/codex-bridge.ts) busca os pedidos em POST /api/host/projects/poll, roda e
 //   confirma em POST /api/host/projects/ack.
 // O pedido `info` só consulta o computador (pasta pessoal, git, gh e as contas/organizações do GitHub) para a tela.
+// O pedido `pdf` converte um HTML que um agente gerou em PDF ao lado dele, com o Edge ou o Chrome sem janela
+// (--headless --print-to-pdf, perfil temporário próprio), para quem pediu um relatório em PDF a um agente sem terminal.
 // Sem shell (execFile), com prazo, e cada nome conferido antes de virar argumento ou caminho.
 // Node puro e sem dependências: também é importado pelo auxiliar do host (via tsx).
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tr } from '../../shared/i18n';
 
 export const RUN_TIMEOUT_MS = 30_000;
 export const CLONE_TIMEOUT_MS = 5 * 60_000;
+export const PDF_TIMEOUT_MS = 90_000;
 export const QUEUED_TIMEOUT_MS = 30_000;
 /** Buscado e não confirmado: o clone pode levar até CLONE_TIMEOUT_MS. */
 export const SENT_TIMEOUT_MS = CLONE_TIMEOUT_MS + 30_000;
@@ -34,7 +38,8 @@ export type Visibility = 'private' | 'public';
 export type ProjectJob =
   | { kind: 'info' }
   | { kind: 'create'; base: string; name: string; github?: { owner: string; visibility: Visibility } }
-  | { kind: 'clone'; base: string; repo: string; name: string };
+  | { kind: 'clone'; base: string; repo: string; name: string }
+  | { kind: 'pdf'; source: string };
 
 export interface ProjectHostInfo {
   home: string;
@@ -48,7 +53,7 @@ export interface ProjectHostInfo {
 
 export type ProjectResult =
   | { ok: true; kind: 'info'; info: ProjectHostInfo }
-  | { ok: true; kind: 'create' | 'clone'; path: string; url?: string; note?: string }
+  | { ok: true; kind: 'create' | 'clone' | 'pdf'; path: string; url?: string; note?: string }
   | { ok: false; error: string };
 
 export type ProjectStatus = 'queued' | 'sent' | 'done' | 'failed';
@@ -85,6 +90,11 @@ export function parseProjectJob(raw: unknown): ProjectJob | { error: string } {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const kind = str(r.kind);
   if (kind === 'info') return { kind: 'info' };
+  if (kind === 'pdf') {
+    const source = str(r.source);
+    if (!source || source.length > 1_024 || source.includes('\0') || !isAbs(source) || !/\.html?$/i.test(source)) return { error: tr('só dá para gerar PDF de um arquivo HTML (caminho absoluto)') };
+    return { kind, source };
+  }
   if (kind !== 'create' && kind !== 'clone') return { error: tr('pedido de projeto inválido') };
   const base = str(r.base);
   if (!base || base.length > 1_024 || base.includes('\0') || !isAbs(base)) return { error: tr('escolha onde criar (caminho absoluto de uma pasta)') };
@@ -120,8 +130,31 @@ export const execCmd: Cmd = (bin, args, opts) =>
     child.stdin?.end();
   });
 
+/** Onde costumam estar o Edge e o Chrome (HABBLAUD_PDF_BROWSER manda no lugar deles). */
+export function browserCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+  const own = env.HABBLAUD_PDF_BROWSER?.trim();
+  if (own) return [own];
+  if (platform === 'win32') {
+    const pf = [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter((p): p is string => !!p);
+    return [
+      ...pf.map((p) => join(p, 'Microsoft', 'Edge', 'Application', 'msedge.exe')),
+      ...pf.map((p) => join(p, 'Google', 'Chrome', 'Application', 'chrome.exe')),
+    ];
+  }
+  if (platform === 'darwin') return ['/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium'];
+  return ['/usr/bin/microsoft-edge', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+}
+
+/** O PDF ao lado do HTML: relatorio.html -> relatorio.pdf. */
+export function pdfPathFor(source: string): string {
+  return source.replace(/\.html?$/i, '.pdf');
+}
+
 export interface RunDeps {
   cmd?: Cmd;
+  /** Auxiliar do host: o HTML precisa estar numa pasta de projeto conhecida (files.ts insideKnownFolder). */
+  inside?: (path: string) => boolean;
+  browsers?: string[];
   home?: string;
   exists?: (p: string) => boolean;
   isDir?: (p: string) => boolean;
@@ -150,6 +183,30 @@ export async function runProjectJob(job: ProjectJob, deps: RunDeps = {}): Promis
       const orgs = ghUser ? await cmd('gh', ['api', 'user/orgs', '--paginate', '--jq', '.[].login'], {}) : undefined;
       const owners = [ghUser, ...(orgs?.ok ? orgs.stdout.split('\n').map((s) => s.trim()) : [])].filter((o) => o && OWNER_RE.test(o));
       return { ok: true, kind: 'info', info: { home: deps.home ?? homedir(), git, gh: !!ghUser, ghUser, owners: [...new Set(owners)] } };
+    }
+    if (job.kind === 'pdf') {
+      if (!exists(job.source)) return { ok: false, error: tr('o HTML não existe neste computador') };
+      if (deps.inside && !deps.inside(job.source)) return { ok: false, error: tr('o HTML não está numa pasta de projeto conhecida') };
+      const browser = (deps.browsers ?? browserCandidates()).find((b) => exists(b));
+      if (!browser) return { ok: false, error: tr('não achei o Edge nem o Chrome neste computador (defina HABBLAUD_PDF_BROWSER)') };
+      const out = pdfPathFor(job.source);
+      // Perfil próprio: com o navegador já aberto, sem ele o pedido iria para a janela aberta e nada seria impresso.
+      const profile = mkdtempSync(join(tmpdir(), 'habblaud-pdf-'));
+      try {
+        const r = await cmd(
+          browser,
+          ['--headless', '--disable-gpu', '--no-first-run', '--no-pdf-header-footer', `--user-data-dir=${profile}`, `--print-to-pdf=${out}`, pathToFileURL(job.source).href],
+          { timeoutMs: PDF_TIMEOUT_MS },
+        );
+        if (!exists(out)) return { ok: false, error: r.ok ? tr('o navegador não gerou o PDF') : r.error };
+      } finally {
+        try {
+          rmSync(profile, { recursive: true, force: true });
+        } catch {
+          // pasta temporária: o sistema limpa depois
+        }
+      }
+      return { ok: true, kind: 'pdf', path: out };
     }
     if (!isDir(job.base)) return { ok: false, error: tr('a pasta {0} não existe neste computador', [job.base]) };
     const path = join(job.base, job.name);

@@ -47,6 +47,11 @@ export class ChatDialog implements UiComponent {
   private readonly viewerPath: HTMLElement;
   private readonly viewerBody: HTMLElement;
   private readonly viewerOpen: HTMLAnchorElement;
+  /** Gerar PDF (só com um HTML aberto): o computador converte com o Edge/Chrome (POST /api/agents/:id/pdf). */
+  private readonly pdfBtn: HTMLButtonElement;
+  private readonly viewerStatus: HTMLElement;
+  /** Caminho do arquivo aberto no visualizador. */
+  private viewing = '';
   private readonly composer: MessageComposer;
   private id = '';
   private source: EventSource | null = null;
@@ -85,6 +90,8 @@ export class ChatDialog implements UiComponent {
     this.viewerPath = h('span', { class: 'ui-chat__viewer-path' });
     this.viewerBody = h('div', { class: 'ui-chat__viewer-body' });
     this.viewerOpen = h('a', { class: 'ui-btn', attrs: { target: '_blank', rel: 'noopener' } }, tr('Abrir em nova aba')) as HTMLAnchorElement;
+    this.pdfBtn = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', hidden: true, attrs: { title: tr('Converte este HTML num PDF ao lado dele, no computador') }, on: { click: () => void this.makePdf() } }, tr('Gerar PDF'));
+    this.viewerStatus = h('span', { class: 'ui-chat__viewer-status', attrs: { role: 'status', 'aria-live': 'polite' } });
     this.viewer = h(
       'div',
       { class: 'ui-chat__viewer', hidden: true },
@@ -93,6 +100,8 @@ export class ChatDialog implements UiComponent {
         { class: 'ui-chat__viewer-head' },
         h('button', { class: 'ui-btn', type: 'button', on: { click: () => this.closeViewer() } }, tr('← Conversa')),
         h('div', { class: 'ui-chat__viewer-title' }, this.viewerName, this.viewerPath),
+        this.viewerStatus,
+        this.pdfBtn,
         this.viewerOpen,
       ),
       this.viewerBody,
@@ -349,9 +358,46 @@ export class ChatDialog implements UiComponent {
     setText(this.viewerName, name);
     setText(this.viewerPath, path);
     this.viewerOpen.href = url;
+    this.viewing = f?.path ?? path;
+    setHidden(this.pdfBtn, !/^html?$/.test(ext));
+    setText(this.viewerStatus, '');
     setHidden(this.scroll, true);
     setHidden(this.viewer, false);
     void renderFile(this.viewerBody, { name, ext, url });
+  }
+
+  /** Converte o HTML aberto em PDF no computador e abre o PDF quando fica pronto. */
+  private async makePdf(): Promise<void> {
+    const id = this.id;
+    const source = this.viewing;
+    this.pdfBtn.disabled = true;
+    setText(this.viewerStatus, tr('Gerando o PDF no computador…'));
+    try {
+      const api = async <T>(url: string, init?: RequestInit): Promise<T> => {
+        const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...init });
+        const body = (await res.json().catch(() => ({}))) as T & { error?: string };
+        if (!res.ok) throw new Error(body.error ?? tr('erro {0}', [res.status]));
+        return body;
+      };
+      type Job = { id: string; status: string; path?: string; error?: string };
+      let job = await api<Job>(`/api/agents/${encodeURIComponent(id)}/pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: source }) });
+      const end = Date.now() + 2 * 60_000;
+      while ((job.status === 'queued' || job.status === 'sent') && Date.now() < end) {
+        await new Promise((ok) => setTimeout(ok, 700));
+        job = await api<Job>(`/api/projects/${encodeURIComponent(job.id)}`);
+      }
+      if (job.status !== 'done' || !job.path) throw new Error(job.error ?? tr('o computador não confirmou'));
+      if (id !== this.id) return;
+      const path = job.path;
+      const name = path.split(/[\\/]/).pop() || path;
+      this.files = [{ path, name, ext: 'pdf', how: 'criado', at: Date.now(), viewable: true }, ...this.files.filter((x) => x.path.toLowerCase() !== path.toLowerCase())];
+      this.renderFiles();
+      this.openFile(path);
+    } catch (err) {
+      setText(this.viewerStatus, tr('Não gerou: {0}', [(err as Error).message]));
+    } finally {
+      this.pdfBtn.disabled = false;
+    }
   }
 
   private closeViewer(): void {

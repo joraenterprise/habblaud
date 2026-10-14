@@ -405,7 +405,10 @@ async function main(): Promise<void> {
     if (Date.now() >= spawnRetryAt) {
       spawned = await spawnRound(post, open, log, undefined, undefined, cli);
       if (spawned.state === 'refused') spawnRetryAt = Date.now() + REFUSED_RETRY_MS;
-      else await projectRound(post, log);
+      else
+        await projectRound(post, log, (job) =>
+          runProjectJob(job, { inside: (p) => insideKnownFolder(p, { accountDirs: discoverClaudeDirs(process.env), roots: [...tempRoots(), attachmentsRoot()] }) }),
+        );
     }
     const r = run ? await round(post, run, log) : spawned;
     const state =

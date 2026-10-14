@@ -32,14 +32,21 @@ export function fileKindLabel(ext: string): string {
   return ext ? ext.toUpperCase() : tr('Arquivo');
 }
 
+/** Arquivo que o agente citou mas que não está no disco (nunca foi criado, ou foi movido/apagado). */
+class MissingFile extends Error {}
+
 async function fetchOk(url: string): Promise<Response> {
   const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (res.status === 404 && /não encontrado|not found/i.test(body.error ?? '')) throw new MissingFile(body.error);
     throw new Error(body.error ?? tr('erro {0}', [res.status]));
   }
   return res;
 }
+
+/** URLs de blob criadas para o visualizador (liberadas a cada arquivo novo). */
+let blobUrl = '';
 
 function table(sheet: Sheet): HTMLElement {
   const width = Math.max(1, ...sheet.rows.map((r) => r.length));
@@ -80,7 +87,19 @@ export async function renderFile(box: HTMLElement, f: ViewFile): Promise<void> {
     } else if (VIDEO.has(ext)) {
       box.replaceChildren(h('video', { class: 'ui-fv__video', attrs: { src: f.url, controls: true } }));
     } else if (FRAME.has(ext)) {
-      box.replaceChildren(h('iframe', { class: 'ui-fv__frame', attrs: { src: f.url, title: f.name, referrerpolicy: 'no-referrer' } }));
+      // Antes do iframe, confere que o arquivo existe: um erro dentro do iframe vira uma página em branco.
+      const res = await fetchOk(f.url);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = '';
+      if (ext === 'pdf') {
+        // O PDF vai por blob (o leitor do navegador abre igual e não baixa duas vezes).
+        blobUrl = URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: 'application/pdf' }));
+        box.replaceChildren(h('iframe', { class: 'ui-fv__frame', attrs: { src: blobUrl, title: f.name } }));
+      } else {
+        void res.body?.cancel();
+        // Página: do próprio servidor, que já a manda com CSP sandbox; o iframe também é isolado.
+        box.replaceChildren(h('iframe', { class: 'ui-fv__frame', attrs: { src: f.url, title: f.name, referrerpolicy: 'no-referrer', sandbox: '' } }));
+      }
     } else if (ext === 'xlsx') {
       const buf = await (await fetchOk(f.url)).arrayBuffer();
       box.replaceChildren(sheets(await readXlsx(buf)));
@@ -106,6 +125,17 @@ export async function renderFile(box: HTMLElement, f: ViewFile): Promise<void> {
       if (cut) box.append(h('p', { class: 'ui-fv__note', text: tr('Arquivo longo: mostrando só o começo.') }));
     }
   } catch (err) {
+    if (err instanceof MissingFile) {
+      box.replaceChildren(
+        h(
+          'div',
+          { class: 'ui-fv__none' },
+          h('p', { class: 'ui-fv__missing-title', text: tr('Este arquivo não existe no computador.') }),
+          h('p', { text: tr('O agente citou este arquivo na resposta, mas não chegou a criá-lo (ou ele foi movido ou apagado). Peça a ele para gerar o arquivo, ou, se for um PDF de um HTML, abra o HTML e use Gerar PDF.') }),
+        ),
+      );
+      return;
+    }
     box.replaceChildren(h('p', { class: 'ui-fv__note is-error', text: tr('Não abriu: {0}', [(err as Error).message]) }));
   }
 }

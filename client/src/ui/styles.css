@@ -10097,3 +10097,27 @@ html.is-replay #world {
     padding: 8px 12px 12px;
   }
 }
+
+.ui-chat__viewer-status {
+  font-size: 12px;
+  color: var(--ui-muted);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-chat__viewer-status:empty {
+  display: none;
+}
+
+.ui-fv__missing-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.ui-fv__none p {
+  max-width: 520px;
+  margin: 0;
+}
