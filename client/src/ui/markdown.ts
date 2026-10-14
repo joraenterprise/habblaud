@@ -3,8 +3,9 @@
 // createElement/textContent: nenhum texto do transcript passa por innerHTML.
 //
 // Cobertura (o que o Claude Code costuma escrever): blocos ``` com linguagem, `código`, **negrito**, *itálico*,
-// títulos #, listas com marcador e numeradas (com aninhamento), citação >, linha horizontal, tabelas
-// (preservadas como texto pré-formatado) e links (viram texto; o endereço fica na dica).
+// títulos #, listas com marcador e numeradas (com aninhamento), citação >, linha horizontal, tabelas (montadas
+// como <table>, com alinhamento e formatação nas células; sem separador válido, ficam como texto pré-formatado) e
+// links (viram texto; o endereço fica na dica).
 
 export type MdInline =
   | { type: 'text'; text: string }
@@ -334,6 +335,61 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string): HTMLEle
   return node;
 }
 
+export type MdAlign = 'left' | 'center' | 'right' | '';
+
+export interface MdTable {
+  head: string[];
+  align: MdAlign[];
+  rows: string[][];
+}
+
+/** Células de uma linha de tabela: separa por "|" fora de `código` e sem contar o "\|" escapado. Puro. */
+export function splitTableRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const cells: string[] = [];
+  let cell = '';
+  let code = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === '|') {
+      cell += '|';
+      i++;
+    } else if (ch === '`') {
+      let n = 1;
+      while (s[i + n] === '`') n++;
+      code = code === 0 ? n : code === n ? 0 : code;
+      cell += s.slice(i, i + n);
+      i += n - 1;
+    } else if (ch === '|' && code === 0) {
+      cells.push(cell.trim());
+      cell = '';
+    } else cell += ch;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+/** Tabela no formato do GitHub (cabeçalho, separador com alinhamento, linhas); null se não tiver separador. Puro. */
+export function parseTable(text: string): MdTable | null {
+  const lines = text.split('\n').filter((l) => l.trim());
+  if (lines.length < 2 || !TABLE_SEP_RE.test(lines[1])) return null;
+  const head = splitTableRow(lines[0]);
+  const align = splitTableRow(lines[1]).map((c): MdAlign => {
+    const l = c.startsWith(':');
+    const r = c.endsWith(':');
+    return l && r ? 'center' : r ? 'right' : l ? 'left' : '';
+  });
+  const width = head.length;
+  const rows = lines.slice(2).map((l) => {
+    const cells = splitTableRow(l);
+    // Linhas com células a menos são completadas; a mais, cortadas (como no GitHub).
+    return Array.from({ length: width }, (_, i) => cells[i] ?? '');
+  });
+  return { head, align: Array.from({ length: width }, (_, i) => align[i] ?? ''), rows };
+}
+
 /** Monta o markdown como nós de DOM (só textContent: seguro para texto vindo do transcript). */
 export function renderMarkdown(src: string): DocumentFragment {
   const frag = document.createDocumentFragment();
@@ -387,9 +443,34 @@ export function renderMarkdown(src: string): DocumentFragment {
         break;
       }
       case 'table': {
-        const pre = el('pre', 'ui-md__table');
-        pre.textContent = b.text;
-        frag.append(pre);
+        const t = parseTable(b.text);
+        if (!t) {
+          const pre = el('pre', 'ui-md__table');
+          pre.textContent = b.text;
+          frag.append(pre);
+          break;
+        }
+        const wrap = el('div', 'ui-md__table-wrap');
+        const table = el('table', 'ui-md__grid');
+        const cell = (tag: 'th' | 'td', text: string, i: number) => {
+          const c = el(tag, '');
+          if (t.align[i]) c.style.textAlign = t.align[i];
+          appendInline(c, tokenizeInline(text));
+          return c;
+        };
+        const head = el('thead', '');
+        const hr = el('tr', '');
+        t.head.forEach((h, i) => hr.append(cell('th', h, i)));
+        head.append(hr);
+        const body = el('tbody', '');
+        for (const r of t.rows) {
+          const tr = el('tr', '');
+          r.forEach((v, i) => tr.append(cell('td', v, i)));
+          body.append(tr);
+        }
+        table.append(head, body);
+        wrap.append(table);
+        frag.append(wrap);
         break;
       }
       case 'rule':

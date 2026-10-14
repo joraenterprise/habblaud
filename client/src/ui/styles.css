@@ -5343,6 +5343,54 @@ button.ui-term__think:hover,
   color: #c9d1e2;
 }
 
+/* Tabela montada: rola por dentro quando é mais larga que a coluna. */
+.ui-md__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160, 176, 210, 0.25) transparent;
+}
+
+.ui-md__grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.93em;
+  line-height: 1.45;
+}
+
+.ui-md__grid th,
+.ui-md__grid td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ui-line);
+  text-align: left;
+  vertical-align: top;
+  max-width: 420px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-md__grid th + th,
+.ui-md__grid td + td {
+  border-left: 1px solid var(--ui-line);
+}
+
+.ui-md__grid thead th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ui-md__grid tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ui-md__grid tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .ui-md__list {
   display: flex;
   flex-direction: column;
