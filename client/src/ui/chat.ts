@@ -178,7 +178,7 @@ export class ChatDialog implements UiComponent {
     const es = new EventSource(terminalUrl(this.id), { withCredentials: true });
     this.source = es;
     es.addEventListener('init', (ev) => {
-      const init = parseInit(JSON.parse((ev as MessageEvent).data));
+      const init = parseInit((ev as MessageEvent).data);
       if (!init) return;
       this.model = new TerminalLog();
       this.toolRows.clear();
@@ -189,7 +189,7 @@ export class ChatDialog implements UiComponent {
       this.stick = true;
       this.toBottom();
     });
-    es.addEventListener('append', (ev) => this.push(parseAppend(JSON.parse((ev as MessageEvent).data))));
+    es.addEventListener('append', (ev) => this.push(parseAppend((ev as MessageEvent).data)));
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED && this.source === es) {
         this.log.append(h('p', { class: 'ui-chat__note is-error', text: tr('A conversa não abriu (o agente saiu do escritório ou o terminal está desligado).') }));
