@@ -239,7 +239,7 @@ export async function spawnRound(
     let r: { ok: true; how: SpawnHow; note?: string } | { ok: false; error: string };
     try {
       const paths = write(id, files);
-      r = await launch({ folder: req.folder, prompt: promptWithAttachments(req.prompt, paths) }, open, cli);
+      r = await launch({ ...req, prompt: promptWithAttachments(req.prompt, paths) }, open, cli);
     } catch (err) {
       r = { ok: false, error: String((err as Error)?.message ?? err) };
     }

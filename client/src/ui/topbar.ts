@@ -1,6 +1,7 @@
 // Barra superior: marca, conexão, contadores, uso por conta e botões de controle.
 import { access } from '../net/access';
 import { SpawnPanel } from './spawn';
+import { AgentsPanel } from './agents';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
@@ -47,6 +48,8 @@ export class TopBar implements UiComponent {
   readonly settingsBtn: HTMLButtonElement;
   private readonly spawnBtn: HTMLButtonElement;
   private readonly spawnPanel: SpawnPanel;
+  private readonly agentsBtn: HTMLButtonElement;
+  private readonly agentsPanel: AgentsPanel;
   /** Grupo dos botões de painéis (feed, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
 
@@ -108,6 +111,11 @@ export class TopBar implements UiComponent {
     this.spawnBtn = iconButton(ICONS.newAgent, tr('Novo agente: começa uma sessão do Claude Code no computador'), () => this.spawnPanel.toggle(this.spawnBtn), 'ui-btn-spawn');
     this.spawnBtn.setAttribute('aria-haspopup', 'dialog');
     this.spawnBtn.hidden = true;
+    this.agentsPanel = new AgentsPanel(ctx, (id) => this.spawnPanel.openWith(this.spawnBtn.hidden ? this.agentsBtn : this.spawnBtn, id));
+    ctx.root.append(this.agentsPanel.el);
+    this.agentsBtn = iconButton(ICONS.agents, tr('Agentes personalizados: crie e use papéis com instruções próprias'), () => this.agentsPanel.toggle(this.agentsBtn), 'ui-btn-agents');
+    this.agentsBtn.setAttribute('aria-haspopup', 'dialog');
+    this.agentsBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);
     const viewGroup = h(
       'div',
@@ -120,6 +128,7 @@ export class TopBar implements UiComponent {
       'div',
       { class: 'ui-btn-group', role: 'group', attrs: { 'aria-label': tr('Painéis') } },
       this.spawnBtn,
+      this.agentsBtn,
       this.timelapseBtn,
       this.feedBtn,
       this.settingsBtn,
@@ -200,6 +209,7 @@ export class TopBar implements UiComponent {
     this.usage.render();
     this.version.render();
     setHidden(this.spawnBtn, !access().spawn || store.mock || store.replaying);
+    setHidden(this.agentsBtn, !access().customAgents || store.mock || store.replaying);
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

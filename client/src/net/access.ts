@@ -25,7 +25,7 @@ export function isLoopbackHostname(hostname: string): boolean {
 
 export function fallbackAccess(hostname: string): AccessInfo {
   const local = isLoopbackHostname(hostname);
-  return { remote: false, local, permissions: local, messages: local, terminal: local, spawn: false };
+  return { remote: false, local, permissions: local, messages: local, terminal: local, spawn: false, customAgents: false };
 }
 
 /** Prazo do GET /api/access (a página não fica esperando para conectar). */
@@ -51,7 +51,7 @@ export async function loadAccess(fetchImpl: typeof fetch = fetch, go: (url: stri
     if (res.ok) {
       const body: unknown = await res.json();
       if (isAccessInfo(body)) {
-        const next = { ...body, spawn: (body as { spawn?: unknown }).spawn === true };
+        const next = { ...body, spawn: (body as { spawn?: unknown }).spawn === true, customAgents: (body as { customAgents?: unknown }).customAgents === true };
         const changed = !sameAccess(current, next);
         current = next;
         if (changed) listeners.forEach((cb) => cb());

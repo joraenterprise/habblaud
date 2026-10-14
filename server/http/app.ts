@@ -18,6 +18,7 @@ import { tr } from '../../shared/i18n';
 import type { SpawnService } from '../spawn/spawn';
 import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
 import type { SpawnFolder } from '../spawn/folders';
+import type { CustomAgentStore } from '../spawn/custom-agents';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
@@ -67,6 +68,8 @@ export interface ApiDeps {
   spawn?: SpawnService;
   /** Pastas sugeridas no "Novo agente" (GET /api/spawn/folders; spawn/folders.ts): projetos recentes. */
   spawnFolders?: () => Promise<SpawnFolder[]>;
+  /** Agentes personalizados (/api/custom-agents; spawn/custom-agents.ts). Só com a trava do terminal. */
+  customAgents?: CustomAgentStore;
   /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
   attachments?: AttachmentStore;
   /** Ditado (/api/dictation e, para o auxiliar do host, /api/host/dictation/*; dictation/dictation.ts). */
@@ -381,6 +384,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           messages: !!deps.messages && trusted(req, 'messages'),
           terminal: !!terminals && trusted(req, 'terminal'),
           spawn: !!deps.spawn && trusted(req, 'spawn'),
+          customAgents: !!deps.customAgents && !!deps.terminal && trusted(req, 'spawn'),
         };
         sendJson(res, 200, access);
       }
@@ -624,6 +628,54 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         sendJson(res, 403, { error: denied(req, tr('mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else {
         deps.messages(req, res, path);
+      }
+      return true;
+    }
+    if (path === '/api/custom-agents' || path.startsWith('/api/custom-agents/')) {
+      // As instruções viram o prompt de sessões que rodam no computador: a mesma trava do Novo agente.
+      const store = deps.customAgents;
+      if (!store || !deps.terminal) {
+        req.resume();
+        sendJson(res, 403, { error: tr('agentes personalizados desligados: só funcionam com o Habblaud acessível apenas pelo próprio computador') });
+      } else if (!trusted(req, 'spawn')) {
+        req.resume();
+        sendJson(res, 403, { error: denied(req, tr('agentes personalizados só são editados pelo próprio computador (http://localhost)')) });
+      } else if (path === '/api/custom-agents') {
+        if (isRead) sendJson(res, 200, { agents: store.list() });
+        else if (method === 'POST')
+          readJson(req)
+            .then((body) => {
+              const r = store.save(body);
+              if ('error' in r) return sendJson(res, r.status, { error: r.error });
+              sendJson(res, 201, r.agent);
+            })
+            .catch((err) => fail(res, err));
+        else methodNotAllowed(res, 'GET, POST');
+      } else {
+        let id: string;
+        try {
+          id = decodeURIComponent(path.slice('/api/custom-agents/'.length));
+        } catch {
+          id = '';
+        }
+        if (!id || id.includes('/')) sendJson(res, 400, { error: tr('id inválido') });
+        else if (isRead) {
+          const a = store.get(id);
+          if (a) sendJson(res, 200, a);
+          else sendJson(res, 404, { error: tr('agente personalizado não encontrado') });
+        } else if (method === 'PUT')
+          readJson(req)
+            .then((body) => {
+              const r = store.save(body, id);
+              if ('error' in r) return sendJson(res, r.status, { error: r.error });
+              sendJson(res, 200, r.agent);
+            })
+            .catch((err) => fail(res, err));
+        else if (method === 'DELETE') {
+          req.resume();
+          if (store.remove(id)) sendJson(res, 200, { ok: true });
+          else sendJson(res, 404, { error: tr('agente personalizado não encontrado') });
+        } else methodNotAllowed(res, 'GET, PUT, DELETE');
       }
       return true;
     }

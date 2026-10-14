@@ -380,6 +380,8 @@ export interface AccessInfo {
   terminal: boolean;
   /** Pode abrir agentes novos no app do Claude (POST /api/spawn). */
   spawn: boolean;
+  /** Pode criar e editar agentes personalizados (/api/custom-agents). */
+  customAgents?: boolean;
 }
 
 export interface FeedItem {

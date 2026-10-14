@@ -9029,3 +9029,159 @@ html.is-replay #world {
     box-shadow: 0 -12px 24px rgba(5, 7, 12, 0.35);
   }
 }
+
+/* Agentes personalizados (ui/agents.ts) e o seletor de agente no Novo agente (ui/spawn.ts). */
+.ui-agents {
+  width: 380px;
+}
+
+.ui-agents__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ui-agents__empty {
+  margin: 4px 0;
+  color: var(--ui-muted);
+}
+
+.ui-agents__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+}
+
+.ui-agents__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ui-agents__desc-line,
+.ui-agents__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+}
+
+.ui-agents__meta {
+  color: var(--ui-faint);
+}
+
+.ui-agents__item-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.ui-agents__new,
+.ui-agents__save {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.ui-agents__title {
+  margin: 4px 0 2px;
+  font: 600 13px/1.3 var(--font-px);
+}
+
+.ui-agents__id {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ui-faint);
+}
+
+.ui-agents__id:empty {
+  display: none;
+}
+
+.ui-agents__desc {
+  resize: vertical;
+}
+
+.ui-agents__prompt {
+  min-height: 140px;
+}
+
+.ui-agents__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ui-agents__model-other {
+  margin-top: 4px;
+}
+
+.ui-agents__tools,
+.ui-spawn__agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.ui-agents__tool {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ui-agents__tool:hover {
+  border-color: var(--ui-line-strong);
+}
+
+.ui-agents__tool.is-on {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+}
+
+.ui-agents__tool:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+
+.ui-agents__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ui-agents__actions .ui-agents__save {
+  margin-top: 0;
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.ui-agents__delete {
+  color: var(--ui-danger, #ff8a8a);
+}
+
+.ui-agents__foot {
+  padding: 0 12px;
+}
+
+@media (max-width: 520px) {
+  .ui-agents {
+    width: calc(100vw - 16px);
+  }
+}

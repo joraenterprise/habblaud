@@ -44,6 +44,7 @@ import { createCliRunner, createOpener, SpawnService } from './spawn/spawn';
 import { runnableClaudeBin } from './claude-bin';
 import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
+import { CustomAgentStore } from './spawn/custom-agents';
 import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
@@ -194,8 +195,12 @@ const ptyOptIn = isTruthy(ptyFlag);
 const spawnOn = config.messages && ptyOptIn;
 const attachments = spawnOn ? new AttachmentStore() : undefined;
 const spawnBin = config.inDocker ? undefined : runnableClaudeBin(process.env);
+// Agentes personalizados (<dataDir>/custom-agents.json): o Novo agente começa a sessão já como um deles.
+const customAgents = new CustomAgentStore(join(config.dataDir, 'custom-agents.json'));
+customAgents.load();
+const customAgent = (id: string) => customAgents.get(id);
 const spawn = spawnOn
-  ? new SpawnService(config.inDocker ? { attachments } : { opener: createOpener(), cli: spawnBin ? createCliRunner(spawnBin) : undefined, attachments })
+  ? new SpawnService(config.inDocker ? { attachments, customAgent } : { opener: createOpener(), cli: spawnBin ? createCliRunner(spawnBin) : undefined, attachments, customAgent })
   : undefined;
 // Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
 const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
@@ -296,6 +301,7 @@ const api = createApiHandler({
   messages: messages ? createMessageRoutes(messages) : undefined,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
   spawn,
+  customAgents,
   attachments,
   dictation,
   deliveries,

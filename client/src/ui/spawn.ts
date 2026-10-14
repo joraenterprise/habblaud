@@ -3,13 +3,16 @@
 // (GET /api/spawn/folders: histórico de sessões + salas), para escolher com um toque; "Outra pasta" aceita um caminho
 // digitado. O pedido pode levar anexos (POST /api/spawn/attachments, um por arquivo, antes do pedido) e ser ditado
 // (ui/dictation.ts, Whisper local no Mac). Pasta que o Claude Code não conhece cai no app (Enter lá).
+import type { CustomAgent } from '../../../shared/custom-agents';
 import { tr } from '../../../shared/i18n';
+import { access } from '../net/access';
 import { isDemoId } from '../../../shared/timeline';
 import type { OfficeSnapshot } from '../../../shared/types';
 import type { UiContext } from './context';
 import { DictationButton, dictationAvailable, insertDictation } from './dictation';
 import { h, iconButton, setHidden, setText } from './dom';
 import { ICONS } from './icons';
+import { fetchCustomAgents } from './agents';
 
 export const SPAWN_PROMPT_MAX = 8_000;
 export const MAX_FILES = 8;
@@ -117,6 +120,8 @@ interface PendingFile {
 export class SpawnPanel {
   readonly el: HTMLElement;
   private readonly folderList: HTMLElement;
+  private readonly agentList: HTMLElement;
+  private readonly agentLabel: HTMLElement;
   private readonly otherBtn: HTMLButtonElement;
   private readonly folder: HTMLInputElement;
   private readonly prompt: HTMLTextAreaElement;
@@ -131,9 +136,14 @@ export class SpawnPanel {
   private selected = '';
   private typing = false;
   private files: PendingFile[] = [];
+  private agents: CustomAgent[] = [];
+  /** Agente personalizado escolhido ('' = Claude Code padrão). */
+  private agentId = '';
 
   constructor(private readonly ctx: UiContext) {
     this.folderList = h('div', { class: 'ui-spawn__folders', role: 'radiogroup', attrs: { 'aria-label': tr('Projetos recentes') } });
+    this.agentLabel = h('p', { class: 'ui-spawn__label', hidden: true, text: tr('Agente') });
+    this.agentList = h('div', { class: 'ui-spawn__agents', role: 'radiogroup', hidden: true, attrs: { 'aria-label': tr('Agente') } });
     this.otherBtn = h('button', { class: 'ui-spawn__other', type: 'button', on: { click: () => this.showOther(true) } }, tr('+ Outra pasta'));
     this.folder = h('input', {
       class: 'ui-rename__input ui-spawn__path',
@@ -188,6 +198,8 @@ export class SpawnPanel {
       h(
         'div',
         { class: 'ui-set-group ui-spawn__body' },
+        this.agentLabel,
+        this.agentList,
         h('p', { class: 'ui-spawn__label', attrs: { id: 'ui-spawn-folders-label' }, text: tr('Projeto') }),
         this.folderList,
         this.otherBtn,
@@ -215,9 +227,21 @@ export class SpawnPanel {
     }
   }
 
+  /** Abre já com um agente personalizado escolhido (botão "Usar" da tela de agentes). */
+  openWith(anchor: HTMLElement, agentId: string): void {
+    this.agentId = agentId;
+    if (this.isOpen) {
+      this.renderAgents();
+      this.applyAgentFolder();
+      return;
+    }
+    this.toggle(anchor);
+  }
+
   toggle(anchor: HTMLElement): void {
     this.anchor = anchor;
     if (this.isOpen) return this.hide();
+    void this.loadAgents();
     // Primeiro com o que o escritório já sabe; a lista do servidor (histórico) chega logo depois.
     if (!this.folders.length) this.setFolders(spawnFolders(this.ctx.store.snapshot).map((path) => ({ path, name: path.split(/[\\/]/).pop() || path, lastAt: 0 })));
     void this.loadFolders();
@@ -247,6 +271,49 @@ export class SpawnPanel {
     } catch {
       // fica a lista das salas
     }
+  }
+
+  private async loadAgents(): Promise<void> {
+    this.agents = access().customAgents ? await fetchCustomAgents() : [];
+    if (this.agentId && !this.agents.some((a) => a.id === this.agentId)) this.agentId = '';
+    this.renderAgents();
+    this.applyAgentFolder();
+  }
+
+  private renderAgents(): void {
+    const show = this.agents.length > 0;
+    setHidden(this.agentLabel, !show);
+    setHidden(this.agentList, !show);
+    if (!show) return this.agentList.replaceChildren();
+    const chip = (id: string, name: string, title: string) => {
+      const on = id === this.agentId;
+      return h(
+        'button',
+        {
+          class: `ui-agents__tool ui-spawn__agent${on ? ' is-on' : ''}`,
+          type: 'button',
+          role: 'radio',
+          attrs: { 'aria-checked': String(on), title },
+          on: {
+            click: () => {
+              this.agentId = id;
+              this.renderAgents();
+              this.applyAgentFolder();
+            },
+          },
+        },
+        name,
+      );
+    };
+    this.agentList.replaceChildren(chip('', tr('Claude (padrão)'), tr('Sessão normal do Claude Code')), ...this.agents.map((a) => chip(a.id, a.name, a.description)));
+  }
+
+  /** O agente tem pasta sugerida: ela vira a escolhida. */
+  private applyAgentFolder(): void {
+    const folder = this.agents.find((a) => a.id === this.agentId)?.folder;
+    if (!folder) return;
+    if (this.folders.some((f) => f.path === folder)) this.pick(folder);
+    else this.showOther(true, folder);
   }
 
   private async checkDictation(): Promise<void> {
@@ -369,7 +436,7 @@ export class SpawnPanel {
       let info = await api<SpawnInfo>('/api/spawn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder, prompt: this.prompt.value, ...(ids.length ? { attachments: ids } : {}) }),
+        body: JSON.stringify({ folder, prompt: this.prompt.value, ...(this.agentId ? { agent: this.agentId } : {}), ...(ids.length ? { attachments: ids } : {}) }),
       });
       const end = Date.now() + WAIT_MS;
       while ((info.status === 'queued' || info.status === 'sent') && Date.now() < end) {

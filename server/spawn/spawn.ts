@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { agentsJson, parseCustomAgent, type CustomAgent } from '../../shared/custom-agents';
 import { tr } from '../../shared/i18n';
 import { attachmentsRoot, promptWithAttachments, writeAttachments, type Attachment, type AttachmentStore } from './attachments';
 
@@ -40,9 +41,13 @@ export const KEEP_MS = 10 * 60_000;
 const MAX_OPEN = 5;
 const ERROR_MAX = 300;
 
+/** O agente personalizado com que a sessão começa (shared/custom-agents.ts). */
+export type SpawnAgent = Pick<CustomAgent, 'id' | 'name' | 'description' | 'prompt' | 'model' | 'tools' | 'permissionMode'>;
+
 export interface SpawnRequest {
   folder: string;
   prompt: string;
+  agent?: SpawnAgent;
 }
 
 export type SpawnStatus = 'queued' | 'sent' | 'opened' | 'failed';
@@ -76,6 +81,13 @@ export function parseSpawn(raw: unknown): SpawnRequest | { error: string } {
     return { error: tr('escolha uma pasta (caminho absoluto, ex.: /Users/voce/projeto)') };
   }
   if (prompt.length > PROMPT_MAX || prompt.includes('\0')) return { error: tr('o pedido passa de {0} caracteres', [PROMPT_MAX]) };
+  // A definição inteira só chega pelo auxiliar do host (a página manda o id, que o SpawnService troca pela definição).
+  if (r.agent !== undefined && r.agent !== null && typeof r.agent === 'object') {
+    const a = parseCustomAgent(r.agent);
+    if ('error' in a) return { error: tr('agente personalizado inválido: {0}', [a.error]) };
+    const { id, name, description, prompt: instructions, model, tools, permissionMode } = a;
+    return { folder, prompt, agent: { id, name, description, prompt: instructions, model, tools, permissionMode } };
+  }
   return { folder, prompt };
 }
 
@@ -83,21 +95,28 @@ export function parseSpawn(raw: unknown): SpawnRequest | { error: string } {
 export function spawnUrl(req: SpawnRequest): string {
   const q = new URLSearchParams();
   q.set('folder', req.folder);
-  if (req.prompt.trim()) q.set('q', req.prompt);
+  // O app não recebe a definição do agente pelo link: as instruções vão no começo do pedido.
+  const text = req.agent ? `${req.agent.prompt}\n\n---\n\n${req.prompt}`.trim() : req.prompt;
+  if (text.trim()) q.set('q', text);
   q.set('source', 'habblaud');
   return `claude://code/new?${q.toString().replace(/\+/g, '%20')}`;
 }
 
-/** Nome da sessão em segundo plano: "Habblaud: " + começo da 1ª linha do pedido. */
-export function sessionName(prompt: string): string {
+/** Nome da sessão em segundo plano: "Habblaud: " + começo da 1ª linha do pedido (com agente: "Habblaud · Nome: ..."). */
+export function sessionName(prompt: string, agentName?: string): string {
   const line = prompt.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
   const cut = line.length > NAME_MAX ? `${line.slice(0, NAME_MAX - 1)}…` : line;
-  return cut ? `Habblaud: ${cut}` : 'Habblaud';
+  const head = agentName ? `Habblaud · ${agentName}` : 'Habblaud';
+  return cut ? `${head}: ${cut}` : head;
 }
 
 /** Argumentos do `claude`: o pedido depois de `--` (um pedido "doctor" ou "-x" continua sendo pedido). */
 export function cliArgs(req: SpawnRequest): string[] {
-  const args = ['--bg', '-n', sessionName(req.prompt)];
+  const args = ['--bg', '-n', sessionName(req.prompt, req.agent?.name)];
+  if (req.agent) {
+    args.push('--agents', agentsJson(req.agent), '--agent', req.agent.id);
+    if (req.agent.permissionMode) args.push('--permission-mode', req.agent.permissionMode);
+  }
   return req.prompt.trim() ? [...args, '--', req.prompt] : args;
 }
 
@@ -177,6 +196,8 @@ export interface SpawnServiceOptions {
   cli?: CliRunner;
   /** Confere a pasta antes de abrir no modo direto (padrão: statSync). */
   folderProblem?: (folder: string) => string | undefined;
+  /** Agentes personalizados: troca o id de `agent` do pedido pela definição (ausente = pedidos sem agente). */
+  customAgent?: (id: string) => CustomAgent | undefined;
   /** Anexos enviados antes do pedido (POST /api/spawn/attachments); ausente = pedidos sem anexos. */
   attachments?: AttachmentStore;
   /** Modo direto: grava os anexos e devolve os caminhos (padrão: ~/.habblaud/attachments/). */
@@ -207,8 +228,18 @@ export class SpawnService {
 
   submit(raw: unknown): SpawnSubmit {
     this.prune();
-    const req = parseSpawn(raw);
-    if ('error' in req) return { error: 'invalid', reason: req.error };
+    const body = raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {};
+    const agentId = body.agent;
+    delete body.agent;
+    let agent: SpawnAgent | undefined;
+    if (typeof agentId === 'string' && agentId.trim()) {
+      const def = this.opts.customAgent?.(agentId.trim());
+      if (!def) return { error: 'invalid', reason: tr('agente personalizado não encontrado') };
+      agent = { id: def.id, name: def.name, description: def.description, prompt: def.prompt, model: def.model, tools: def.tools, permissionMode: def.permissionMode };
+    } else if (agentId !== undefined && agentId !== null && agentId !== '') return { error: 'invalid', reason: tr('agente personalizado inválido') };
+    const parsed = parseSpawn(body);
+    if ('error' in parsed) return { error: 'invalid', reason: parsed.error };
+    const req: SpawnRequest = agent ? { ...parsed, agent } : parsed;
     if (!this.available()) {
       return { error: 'unavailable', reason: tr('o auxiliar do computador não está rodando: deixe npm run codex:bridge no ar (o Habblaud está no Docker)') };
     }
@@ -247,7 +278,7 @@ export class SpawnService {
       e.at = this.now();
       const files = e.files.map((f) => ({ name: f.name, type: f.type, data: f.data.toString('base64') }));
       this.dropFiles(e);
-      out.push({ id: e.info.id, folder: e.req.folder, prompt: e.req.prompt, files });
+      out.push({ id: e.info.id, folder: e.req.folder, prompt: e.req.prompt, ...(e.req.agent ? { agent: e.req.agent } : {}), files });
     }
     return out;
   }
@@ -280,7 +311,7 @@ export class SpawnService {
     } finally {
       this.dropFiles(e);
     }
-    const req = { folder: e.req.folder, prompt: promptWithAttachments(e.req.prompt, paths) };
+    const req = { ...e.req, prompt: promptWithAttachments(e.req.prompt, paths) };
     this.resolve(e, await launch(req, opener, this.opts.cli));
   }
 

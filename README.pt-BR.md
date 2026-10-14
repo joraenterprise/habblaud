@@ -276,6 +276,11 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
   **Vem desligado:** precisa de `HABBLAUD_PTY=1` (a mesma liberação do
   [terminal interativo](#terminal-interativo-assumir-nova-sessão-e-encerrar); no Docker, ponha no `.env` e deixe o
   `npm run codex:bridge` rodando no computador) e, pelo celular, também de `spawn` no `HABBLAUD_REMOTE_ALLOW`.
+- **Agentes personalizados** (botão de duas pessoas, ao lado do **+**): crie papéis com nome, quando usar,
+  instruções, modelo, ferramentas, modo de permissão e pasta sugerida. **Usar** (ou escolher o agente no **+**) começa
+  a sessão já como ele (`claude --agents <json> --agent <id>`). Ficam em `<dataDir>/custom-agents.json` (no Docker,
+  no volume) e na API `/api/custom-agents` (só pelo próprio computador). Para montar um conversando, rode
+  **`/criar-agente`** no Claude Code (skill do mod `habblaud`): ele entrevista você, mostra o rascunho e salva aqui.
 - **Ditado** (no Novo agente e na caixa de mensagem): precisa de `whisper-cli` e `ffmpeg` (`brew install whisper-cpp
   ffmpeg`) e de um modelo multilíngue em `~/.local/share/whisper/` (`ggml-small.bin` acerta mais que o
   `ggml-base.bin`; os `.en` só entendem inglês). Sem eles o botão Ditar não aparece. A voz não sai do computador.
