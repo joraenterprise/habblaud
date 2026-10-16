@@ -54,6 +54,8 @@ interface Turn {
   text: string;
   textAt: number;
   files: Array<{ path: string; caption?: string }>;
+  /** Caminhos escritos/editados/mandados (TerminalEntry 'tool' com `files`), na ordem. */
+  written: string[];
   captures: Array<{ type: string; data: string }>;
   /** O transcript marca o motivo de parada (Claude Code): só vale entrega o texto que encerrou a vez (end_turn). */
   marksStop: boolean;
@@ -145,7 +147,7 @@ export function linkedFiles(text: string, project?: string): string[] {
 }
 
 function newTurn(start: TerminalEntry & { kind: 'user' }): Turn {
-  return { start, tools: 0, edited: new Set(), text: '', textAt: start.at, files: [], captures: [], marksStop: false, ended: false };
+  return { start, tools: 0, edited: new Set(), text: '', textAt: start.at, files: [], written: [], captures: [], marksStop: false, ended: false };
 }
 
 /** Imagens dentro de resultados de ferramenta (capturas de tela), em ordem. */
@@ -222,6 +224,7 @@ export function parseTurns(lines: Iterable<string>, parser: TerminalParser): { t
       } else if (e.kind === 'tool') {
         cur.tools++;
         if (EDIT_TOOLS.has(e.tool)) cur.edited.add(e.title);
+        for (const f of e.files ?? []) if (!cur.written.includes(f) && cur.written.length < 50) cur.written.push(f);
       }
     }
     if (!cur) continue;
@@ -340,6 +343,8 @@ export class DeliveryIndex {
       tools: t.tools,
       edited: t.edited.size,
       attachments,
+      fullRequest: t.start.text.slice(0, 20_000),
+      ...(t.written.length ? { written: [...t.written] } : {}),
     };
   }
 }

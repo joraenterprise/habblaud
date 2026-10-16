@@ -42,6 +42,9 @@ services:
       # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
       # codex:bridge; o terminal interativo em si não roda no container).
       HABBLAUD_PTY: ${HABBLAUD_PTY:-}
+      # Memória no ai-memory (server/memory/ai-memory.ts): o servidor dele no host, visto de dentro do container.
+      HABBLAUD_AI_MEMORY_URL: ${HABBLAUD_AI_MEMORY_URL:-}
+      HABBLAUD_AI_MEMORY_TOKEN: ${HABBLAUD_AI_MEMORY_TOKEN:-}
       # Acesso remoto com login (server/http/remote.ts).
       HABBLAUD_REMOTE_USER: ${HABBLAUD_REMOTE_USER:-}
       HABBLAUD_REMOTE_PASSWORD_HASH: ${HABBLAUD_REMOTE_PASSWORD_HASH:-}

@@ -73,6 +73,8 @@ export interface ApiDeps {
   spawnFolders?: () => Promise<SpawnFolder[]>;
   /** Agentes personalizados (/api/custom-agents; spawn/custom-agents.ts). Só com a trava do terminal. */
   customAgents?: CustomAgentStore;
+  /** Publicação dos pedidos concluídos no ai-memory (memory/ai-memory.ts): o estado vai no /api/health. */
+  aiMemory?: () => { enabled: boolean; url?: string; published: number; lastAt?: number; lastError?: string };
   /** Novo projeto (/api/projects e, para o auxiliar do host, /api/host/projects/*; projects/projects.ts). */
   projects?: ProjectService;
   /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
@@ -372,6 +374,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           pty: !!deps.pty && !remote,
           messages: !!deps.messages && (!remote || trusted(req, 'messages')),
           codexEvents: !!deps.codexLive,
+          aiMemory: remote ? undefined : (deps.aiMemory?.() ?? { enabled: false, published: 0 }),
           updates: updatesSummary(deps.updates?.status()),
           sources: deps.sources(),
           accounts: accounts.allEntries().map((a) =>

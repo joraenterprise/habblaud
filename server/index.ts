@@ -50,6 +50,7 @@ import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
 import { DeliveryIndex } from './deliveries/deliveries';
+import { AiMemoryPublisher, aiMemoryConfig, createRpc, PUBLISH_EVERY_MS } from './memory/ai-memory';
 import { FileFetcher } from './deliveries/fetcher';
 
 const config = loadConfig();
@@ -151,6 +152,17 @@ const deliveries = history
       agentName: (id) => office.list().find((a) => a.id === id)?.name,
     })
   : undefined;
+// Memória no ai-memory: cada pedido concluído vira uma página do projeto (pedido completo, resposta final, arquivos),
+// para outra conta ou outra ferramenta continuar de onde parou. Ligado com HABBLAUD_AI_MEMORY_URL (e o token).
+const aiMemoryCfg = aiMemoryConfig();
+const aiMemory =
+  deliveries && aiMemoryCfg
+    ? new AiMemoryPublisher({ file: join(config.dataDir, 'ai-memory.json'), ...createRpc(aiMemoryCfg), deliveries: () => deliveries.list(), url: aiMemoryCfg.url })
+    : undefined;
+if (aiMemory) {
+  setTimeout(() => void aiMemory.round(), 10_000).unref?.();
+  setInterval(() => void aiMemory.round(), PUBLISH_EVERY_MS).unref?.();
+}
 const deliveryFiles = deliveries
   ? new FileFetcher({
       direct: !config.inDocker,
@@ -306,6 +318,7 @@ const api = createApiHandler({
   spawn,
   customAgents,
   projects,
+  aiMemory: aiMemory ? () => aiMemory.info() : undefined,
   attachments,
   dictation,
   deliveries,
