@@ -11,6 +11,7 @@
 //
 // Ligado com HABBLAUD_AI_MEMORY_URL (ex.: http://host.docker.internal:49374) e HABBLAUD_AI_MEMORY_TOKEN. Fala MCP
 // por HTTP sem sessão (POST /mcp, tools/call). Nunca lança: falhas ficam no status e tentam de novo depois.
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DeliveryInfo } from '../../shared/types';
@@ -59,9 +60,10 @@ const fmt = (at: number) => new Date(at).toISOString().replace('T', ' ').slice(0
 /** Caminho da página: habblaud/pedidos/AAAA-MM-DD-<sessão>-<id curto>.md (um por pedido, estável). */
 export function pagePath(d: MemoryTurn): string {
   const day = new Date(d.startedAt).toISOString().slice(0, 10);
-  const tail = d.id.split(':').pop() ?? '';
   const safe = (s: string) => s.replace(/[^A-Za-z0-9-]+/g, '').slice(0, 12) || 'x';
-  return `habblaud/pedidos/${day}-${safe(d.sessionId.slice(0, 8))}-${safe(tail)}.md`;
+  // Um pedido por página: o hash do id do pedido (conta:sessão:entrada) nunca se repete entre pedidos da mesma sessão.
+  const turn = createHash('sha256').update(d.id).digest('hex').slice(0, 10);
+  return `habblaud/pedidos/${day}-${safe(d.sessionId.slice(0, 8))}-${turn}.md`;
 }
 
 /** A página em markdown: quem, quando, o pedido inteiro, a resposta final e os arquivos. */

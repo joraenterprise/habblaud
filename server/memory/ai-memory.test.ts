@@ -33,7 +33,9 @@ describe('ai-memory: configuração e nomes', () => {
 
   it('página com o pedido inteiro, a resposta e os arquivos', () => {
     const d = delivery();
-    expect(pagePath(d)).toBe('habblaud/pedidos/2026-10-16-a045a78c-u1.md');
+    expect(pagePath(d)).toMatch(/^habblaud\/pedidos\/2026-10-16-a045a78c-[0-9a-f]{10}\.md$/);
+    // Pedidos diferentes da mesma sessão nunca dividem a página.
+    expect(pagePath(delivery({ id: '.claude:a045a78c-622c:u2' }))).not.toBe(pagePath(d));
     const body = pageBody(d);
     expect(body).toContain('ME no Simples Nacional e prioriza a CAIXA');
     expect(body).toContain('## Resposta final');
@@ -56,7 +58,7 @@ describe('ai-memory: publicação', () => {
   it('grava no projeto que aceita a sessão e não publica de novo', async () => {
     const { pub, calls } = setup((p) => p === 'rollcake');
     expect(await pub.round()).toBe(1);
-    expect(calls[0]).toMatchObject({ workspace: 'default', project: 'rollcake', session_id: 'a045a78c-622c-4e6a-961e-c19d0afd7807', path: 'habblaud/pedidos/2026-10-16-a045a78c-u1.md' });
+    expect(calls[0]).toMatchObject({ workspace: 'default', project: 'rollcake', session_id: 'a045a78c-622c-4e6a-961e-c19d0afd7807', path: pagePath(delivery()) });
     expect(await pub.round()).toBe(0);
     expect(pub.info()).toMatchObject({ enabled: true, published: 1 });
   });
