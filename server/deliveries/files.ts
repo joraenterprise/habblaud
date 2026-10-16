@@ -89,6 +89,12 @@ export function fileType(path: string): { kind: DeliveryAttachmentKind; type: st
   return TYPES[extensionOf(path)];
 }
 
+/** Caminho com cara de segredo (.ssh, .env, chaves, credenciais...), em qualquer sistema. */
+export function isSecretPath(path: string): boolean {
+  const p = path.replace(/\\/g, '/');
+  return SECRET_DIRS.test(p) || SECRET_NAMES.test(p);
+}
+
 /** Caminho absoluto do Unix (/...) ou do Windows (C:\... ou C:/...). */
 export function isAbsoluteAnyOs(path: string): boolean {
   return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);

@@ -12,7 +12,7 @@ import { tr } from '../../shared/i18n';
 import type { DeliveryAttachment, DeliveryInfo, Provider, RecentSession, TerminalEntry } from '../../shared/types';
 import type { TerminalParser } from '../sources/terminal';
 import { FileTail } from '../sources/tail';
-import { fileType, pathProblem } from './files';
+import { fileType, pathProblem, isSecretPath } from './files';
 
 /** Quanto do fim de cada transcript entra (os pedidos mais antigos de uma sessão longa ficam de fora). */
 export const TAIL_BYTES = 6 * 1024 * 1024;
@@ -241,8 +241,18 @@ const baseName = (p: string) => p.split(/[\\/]/).pop() || p;
 export class DeliveryIndex {
   private readonly cache = new Map<string, Parsed>();
   private files = new Map<string, StoredAttachment>();
+  /**
+   * Caminhos escritos em cada pedido da última listagem (só para a memória do projeto, memory/ai-memory.ts): ficam
+   * fora da resposta da API, que vai para a página e o celular.
+   */
+  private writtenById = new Map<string, string[]>();
 
   constructor(private readonly opts: DeliveryIndexOptions) {}
+
+  /** Arquivos que o agente escreveu, editou ou mandou no pedido (sem nada com cara de segredo). */
+  written(id: string): string[] {
+    return [...(this.writtenById.get(id) ?? [])];
+  }
 
   /** Anexo pelo id opaco (só os das entregas da última listagem). */
   attachment(id: string): StoredAttachment | undefined {
@@ -253,6 +263,7 @@ export class DeliveryIndex {
     const sessions = (await this.opts.sessions()).slice(0, MAX_SESSIONS);
     const out: DeliveryInfo[] = [];
     const files = new Map<string, StoredAttachment>();
+    const written = new Map<string, string[]>();
     const seen = new Set<string>();
     for (const s of sessions) {
       const src = this.opts.resolve(s.account, s.sessionId);
@@ -264,11 +275,16 @@ export class DeliveryIndex {
       const turns = parsed.last && !busy ? [...parsed.turns, parsed.last] : parsed.turns;
       for (const t of turns) {
         const d = this.toDelivery(s, t, files);
-        if (d) out.push(d);
+        if (d) {
+          out.push(d);
+          const w = t.written.filter((p) => !isSecretPath(p));
+          if (w.length) written.set(d.id, w);
+        }
       }
     }
     for (const path of this.cache.keys()) if (!seen.has(path)) this.cache.delete(path);
     this.files = files;
+    this.writtenById = written;
     return out.sort((a, b) => b.finishedAt - a.finishedAt).slice(0, MAX_DELIVERIES);
   }
 
@@ -344,7 +360,6 @@ export class DeliveryIndex {
       edited: t.edited.size,
       attachments,
       fullRequest: t.start.text.slice(0, 20_000),
-      ...(t.written.length ? { written: [...t.written] } : {}),
     };
   }
 }

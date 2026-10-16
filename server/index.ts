@@ -157,7 +157,7 @@ const deliveries = history
 const aiMemoryCfg = aiMemoryConfig();
 const aiMemory =
   deliveries && aiMemoryCfg
-    ? new AiMemoryPublisher({ file: join(config.dataDir, 'ai-memory.json'), ...createRpc(aiMemoryCfg), deliveries: () => deliveries.list(), url: aiMemoryCfg.url })
+    ? new AiMemoryPublisher({ file: join(config.dataDir, 'ai-memory.json'), ...createRpc(aiMemoryCfg), deliveries: async () => (await deliveries.list()).map((d) => ({ ...d, written: deliveries.written(d.id) })), url: aiMemoryCfg.url })
     : undefined;
 if (aiMemory) {
   setTimeout(() => void aiMemory.round(), 10_000).unref?.();

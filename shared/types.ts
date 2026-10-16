@@ -591,8 +591,6 @@ export interface DeliveryInfo {
   attachments: DeliveryAttachment[];
   /** O pedido inteiro, como foi escrito (até ~20 mil caracteres). */
   fullRequest?: string;
-  /** Caminhos que o agente escreveu, editou ou mandou neste pedido. */
-  written?: string[];
 }
 
 export interface DeliveriesResponse {

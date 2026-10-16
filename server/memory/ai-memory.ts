@@ -14,6 +14,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DeliveryInfo } from '../../shared/types';
+
+/** Um pedido concluído com os arquivos que o agente escreveu (DeliveryIndex.written). */
+export type MemoryTurn = DeliveryInfo & { written?: string[] };
 import { errMsg, log } from '../log';
 import { tr } from '../../shared/i18n';
 
@@ -54,7 +57,7 @@ export function candidateProjects(project: string, known: readonly string[]): st
 const fmt = (at: number) => new Date(at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
 
 /** Caminho da página: habblaud/pedidos/AAAA-MM-DD-<sessão>-<id curto>.md (um por pedido, estável). */
-export function pagePath(d: DeliveryInfo): string {
+export function pagePath(d: MemoryTurn): string {
   const day = new Date(d.startedAt).toISOString().slice(0, 10);
   const tail = d.id.split(':').pop() ?? '';
   const safe = (s: string) => s.replace(/[^A-Za-z0-9-]+/g, '').slice(0, 12) || 'x';
@@ -62,7 +65,7 @@ export function pagePath(d: DeliveryInfo): string {
 }
 
 /** A página em markdown: quem, quando, o pedido inteiro, a resposta final e os arquivos. */
-export function pageBody(d: DeliveryInfo): string {
+export function pageBody(d: MemoryTurn): string {
   const who = [d.agentName, d.provider === 'codex' ? 'Codex' : 'Claude Code', d.account ? tr('conta {0}', [d.account]) : ''].filter(Boolean).join(' · ');
   const files = [...new Set([...(d.written ?? [])])];
   const lines = [
@@ -139,7 +142,7 @@ export interface PublisherOptions {
   file: string | null;
   rpc: Rpc;
   adminGet: AdminGet;
-  deliveries: () => Promise<DeliveryInfo[]>;
+  deliveries: () => Promise<MemoryTurn[]>;
   now?: () => number;
   url?: string;
 }
@@ -211,7 +214,7 @@ export class AiMemoryPublisher {
   }
 
   /** Grava a página do pedido no projeto certo (o da sessão; senão o da pasta). */
-  private async publish(d: DeliveryInfo, known: string[]): Promise<RpcResult> {
+  private async publish(d: MemoryTurn, known: string[]): Promise<RpcResult> {
     const key = folderKey(d.project!);
     const page = {
       workspace: 'default',

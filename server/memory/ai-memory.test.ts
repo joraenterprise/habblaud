@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { DeliveryInfo } from '../../shared/types';
-import { AiMemoryPublisher, aiMemoryConfig, candidateProjects, folderProject, pageBody, pagePath, type Rpc } from './ai-memory';
+import { AiMemoryPublisher, aiMemoryConfig, candidateProjects, folderProject, pageBody, pagePath, type MemoryTurn, type Rpc } from './ai-memory';
 
-const delivery = (over: Partial<DeliveryInfo> = {}): DeliveryInfo => ({
+const delivery = (over: Partial<MemoryTurn> = {}): MemoryTurn => ({
   id: '.claude:a045a78c-622c:u1',
   account: '.claude',
   sessionId: 'a045a78c-622c-4e6a-961e-c19d0afd7807',
