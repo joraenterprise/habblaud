@@ -245,6 +245,39 @@ conta (ou passar do Claude Code para o Codex), a sessão nova no mesmo projeto e
   a skill `/criar-agente` já inclui).
 - **Desligar:** `HABBLAUD_AI_MEMORY=0` no `.env` e `npm run docker:up`. A memória gravada continua no volume.
 
+### 6. Login por pessoa (opcional)
+
+Com `HABBLAUD_LOGIN=1` no `.env` (e `npm run docker:up`), todo acesso pede usuário e senha. No primeiro acesso, a
+página cria o **administrador**. Depois, pelo botão com as iniciais na barra do topo, o administrador cria e gerencia
+os usuários (**Usuários**), e cada pessoa troca a própria senha.
+
+- **Papéis:** o administrador gerencia usuários e contas do Claude; o membro usa o escritório.
+- **Quem entra vale como acesso local:** com o login, terminal, mensagens e Novo agente funcionam mesmo com a porta na
+  rede.
+- **Rotas de máquina:** hooks, plugins e o auxiliar do host continuam sem login, só pelo próprio computador.
+- **Senhas e sessões:** senhas com scrypt em `<dados>/users.json`. A sessão vale 14 dias e cai ao trocar a senha.
+- **Sem HTTPS ainda:** num servidor de verdade, ponha HTTPS na frente e `HABBLAUD_LOGIN_SECURE_COOKIE=1`. Sem isso, a
+  senha viaja em texto puro na rede.
+
+### 7. Contas do Claude (claude-swap)
+
+O botão **Contas** (cartões, na barra do topo) mostra o banco de contas do
+[claude-swap](https://github.com/realiti4/claude-swap) (MIT) do computador dos agentes. Instale-o com
+`pipx install claude-swap` e cadastre a conta atual com `cswap add`.
+
+- **Painel:** uso de 5 h e de 7 dias de cada conta, quando reinicia e a conta ativa.
+- **Usar esta conta:** troca a conta ativa (`cswap switch`). Os agentes rodando passam a usá-la na próxima mensagem,
+  na mesma conversa.
+- **Conectar conta:** abre o login do Claude. O login acontece numa pasta separada (a conta ativa não muda); você cola
+  o código e a conta entra no banco.
+- **Chave de API (Console):** cadastra uma conta paga pelo uso.
+- **Aviso de cota:** acima de 90% da janela, o escritório avisa e sugere a conta com mais folga. A troca entre
+  assinaturas é sempre um clique de alguém.
+- **Troca automática:** só para a conta de chave de API, quando a assinatura ativa esgota, e de volta quando ela tiver
+  folga. É opcional e começa desligada.
+- **Quem faz o quê:** quem roda o `cswap` e o login é o auxiliar do host (`npm run codex:bridge`). O caminho do
+  `cswap` vem de `HABBLAUD_CSWAP_BIN` ou de `~/.local/bin/cswap`.
+
 ### Abrir no celular (opcional)
 
 Por padrão o Habblaud só aceita conexões do próprio computador. Para abrir no celular (no mesmo Wi-Fi), com Docker:
