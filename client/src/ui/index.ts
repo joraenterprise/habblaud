@@ -22,6 +22,7 @@ import { HistoryPopover } from './history';
 import { Deliveries } from './deliveries';
 import { ChatDialog } from './chat';
 import { UserMenu } from './users';
+import { AccountsPanel } from './accounts';
 import { HoverTip } from './hovertip';
 import { hasRunningShells } from './model';
 import { hasCodexPermission } from './provider';
@@ -216,6 +217,9 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   if (typeof location !== 'undefined') openLink(new URL(location.href));
   // Login por pessoa: o botão de quem está logado (menu com senha, Usuários e Sair), no fim da barra.
   const userMenu = new UserMenu(ctx);
+  // Contas do Claude (claude-swap): uso de cada uma, troca e o aviso de cota.
+  const accounts = new AccountsPanel(ctx);
+  topbar.panelGroup.prepend(accounts.button);
   topbar.panelGroup.append(userMenu.button);
   // Conversa com o agente no centro da tela (Ver tudo / Conversar nos detalhes).
   const chat = new ChatDialog(ctx);
@@ -250,7 +254,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, chat, userMenu, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, chat, userMenu, accounts, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;

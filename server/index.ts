@@ -48,6 +48,8 @@ import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
 import { CustomAgentStore } from './spawn/custom-agents';
 import { ProjectService, runProjectJob } from './projects/projects';
+import { AccountBank, REFRESH_MS } from './accounts/bank';
+import { SwapHost } from './accounts/swap-host';
 import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
@@ -218,7 +220,14 @@ const spawn = spawnOn
   ? new SpawnService(config.inDocker ? { attachments, customAgent } : { opener: createOpener(), cli: spawnBin ? createCliRunner(spawnBin) : undefined, attachments, customAgent })
   : undefined;
 // Novo projeto (pasta + git/GitHub ou clone): junto com o Novo agente; no Docker, pelo auxiliar do host.
-const projects = spawnOn ? new ProjectService(config.inDocker ? {} : { run: (job) => runProjectJob(job) }) : undefined;
+// Banco de contas (claude-swap): no modo Node o próprio servidor roda o cswap; no Docker, o auxiliar do host.
+const swapHost = spawnOn && !config.inDocker ? new SwapHost({ claude: spawnBin }) : undefined;
+const projects = spawnOn ? new ProjectService(config.inDocker ? {} : { run: (job) => runProjectJob(job, { swap: swapHost }) }) : undefined;
+const swapBank = projects ? new AccountBank({ projects, file: join(config.dataDir, 'swap.json') }) : undefined;
+if (swapBank) {
+  setTimeout(() => void swapBank.refresh(), 15_000).unref?.();
+  setInterval(() => void swapBank.refresh(), REFRESH_MS).unref?.();
+}
 // Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
 const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
@@ -320,6 +329,7 @@ const api = createApiHandler({
   spawn,
   customAgents,
   projects,
+  swap: swapBank,
   aiMemory: aiMemory ? () => aiMemory.info() : undefined,
   attachments,
   dictation,

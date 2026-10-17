@@ -25,7 +25,7 @@ export const SENT_TIMEOUT_MS = CLONE_TIMEOUT_MS + 30_000;
 export const KEEP_MS = 10 * 60_000;
 export const HOST_PRESENCE_MS = 10_000;
 const ERROR_MAX = 400;
-const MAX_OPEN = 3;
+const MAX_OPEN = 6;
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -39,7 +39,14 @@ export type ProjectJob =
   | { kind: 'info' }
   | { kind: 'create'; base: string; name: string; github?: { owner: string; visibility: Visibility } }
   | { kind: 'clone'; base: string; repo: string; name: string }
-  | { kind: 'pdf'; source: string };
+  | { kind: 'pdf'; source: string }
+  // Banco de contas (claude-swap; accounts/swap-host.ts): listar, trocar a ativa, chave de API e conectar pelo login.
+  | { kind: 'swap-list' }
+  | { kind: 'swap-switch'; target: number }
+  | { kind: 'swap-token'; token: string; label?: string }
+  | { kind: 'swap-login-start' }
+  | { kind: 'swap-login-finish'; loginId: string; code: string }
+  | { kind: 'swap-login-cancel'; loginId: string };
 
 export interface ProjectHostInfo {
   home: string;
@@ -51,9 +58,17 @@ export interface ProjectHostInfo {
   owners: string[];
 }
 
+export type SwapJob = Extract<ProjectJob, { kind: `swap-${string}` }>;
+
+/** Pedido do banco de contas (claude-swap)? */
+export function isSwapJob(job: ProjectJob): job is SwapJob {
+  return job.kind.startsWith('swap-');
+}
+
 export type ProjectResult =
   | { ok: true; kind: 'info'; info: ProjectHostInfo }
   | { ok: true; kind: 'create' | 'clone' | 'pdf'; path: string; url?: string; note?: string }
+  | { ok: true; kind: 'swap'; data: unknown }
   | { ok: false; error: string };
 
 export type ProjectStatus = 'queued' | 'sent' | 'done' | 'failed';
@@ -67,6 +82,8 @@ export interface ProjectJobInfo {
   url?: string;
   note?: string;
   info?: ProjectHostInfo;
+  /** Resultado de um pedido `swap-*` (o servidor confere o formato: accounts/bank.ts). */
+  swap?: unknown;
 }
 
 const isAbs = (p: string): boolean => isAbsolute(p) || /^[A-Za-z]:[\\/]/.test(p);
@@ -90,6 +107,26 @@ export function parseProjectJob(raw: unknown): ProjectJob | { error: string } {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const kind = str(r.kind);
   if (kind === 'info') return { kind: 'info' };
+  if (kind === 'swap-list' || kind === 'swap-login-start') return { kind };
+  if (kind === 'swap-switch') {
+    const target = Number(r.target);
+    return Number.isInteger(target) && target > 0 && target < 1000 ? { kind, target } : { error: tr('conta inválida') };
+  }
+  if (kind === 'swap-token') {
+    const token = str(r.token);
+    // Chave do Console (sk-ant-api…, sk-ant-usr…) ou setup-token (sk-ant-oat…): só o formato, nada mais.
+    if (!/^sk-ant-[A-Za-z0-9_-]{20,400}$/.test(token)) return { error: tr('chave inválida: use uma chave sk-ant-… do Console') };
+    const label = str(r.label).replace(/[^\w@.+-]/g, '').slice(0, 80);
+    return { kind, token, ...(label ? { label } : {}) };
+  }
+  if (kind === 'swap-login-finish' || kind === 'swap-login-cancel') {
+    const loginId = str(r.loginId);
+    if (!/^[0-9a-f-]{36}$/.test(loginId)) return { error: tr('login inválido') };
+    if (kind === 'swap-login-cancel') return { kind, loginId };
+    const code = str(r.code);
+    if (!code || code.length > 512) return { error: tr('cole o código do Claude') };
+    return { kind, loginId, code };
+  }
   if (kind === 'pdf') {
     const source = str(r.source);
     if (!source || source.length > 1_024 || source.includes('\0') || !isAbs(source) || !/\.html?$/i.test(source)) return { error: tr('só dá para gerar PDF de um arquivo HTML (caminho absoluto)') };
@@ -155,6 +192,15 @@ export interface RunDeps {
   /** Auxiliar do host: o HTML precisa estar numa pasta de projeto conhecida (files.ts insideKnownFolder). */
   inside?: (path: string) => boolean;
   browsers?: string[];
+  /** O banco de contas (claude-swap) deste computador; ausente = pedidos swap-* recusados. */
+  swap?: {
+    list(): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+    switchTo(target: number): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+    addToken(token: string, label?: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+    loginStart(): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+    loginFinish(id: string, code: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+    loginCancel(id: string): { ok: true; data: unknown } | { ok: false; error: string };
+  };
   home?: string;
   exists?: (p: string) => boolean;
   isDir?: (p: string) => boolean;
@@ -183,6 +229,25 @@ export async function runProjectJob(job: ProjectJob, deps: RunDeps = {}): Promis
       const orgs = ghUser ? await cmd('gh', ['api', 'user/orgs', '--paginate', '--jq', '.[].login'], {}) : undefined;
       const owners = [ghUser, ...(orgs?.ok ? orgs.stdout.split('\n').map((s) => s.trim()) : [])].filter((o) => o && OWNER_RE.test(o));
       return { ok: true, kind: 'info', info: { home: deps.home ?? homedir(), git, gh: !!ghUser, ghUser, owners: [...new Set(owners)] } };
+    }
+    if (isSwapJob(job)) {
+      const swap = deps.swap;
+      if (!swap) return { ok: false, error: tr('o banco de contas (claude-swap) não está neste computador') };
+      const r =
+        job.kind === 'swap-list'
+          ? await swap.list()
+          : job.kind === 'swap-switch'
+            ? await swap.switchTo(job.target)
+            : job.kind === 'swap-token'
+              ? await swap.addToken(job.token, job.label)
+              : job.kind === 'swap-login-start'
+                ? await swap.loginStart()
+                : job.kind === 'swap-login-finish'
+                  ? await swap.loginFinish(job.loginId, job.code)
+                  : job.kind === 'swap-login-cancel'
+                    ? swap.loginCancel(job.loginId)
+                    : { ok: false as const, error: tr('pedido de conta inválido') };
+      return r.ok ? { ok: true, kind: 'swap', data: r.data } : { ok: false, error: r.error };
     }
     if (job.kind === 'pdf') {
       if (!exists(job.source)) return { ok: false, error: tr('o HTML não existe neste computador') };
@@ -311,9 +376,12 @@ export class ProjectService {
   }
 
   private resolve(e: Entry, r: ProjectResult): void {
+    if (e.job.kind === 'swap-token') e.job = { ...e.job, token: '' };
+    if (e.job.kind === 'swap-login-finish') e.job = { ...e.job, code: '' };
     e.info.status = r.ok ? 'done' : 'failed';
     if (!r.ok) e.info.error = r.error.slice(0, ERROR_MAX);
     else if (r.kind === 'info') e.info.info = r.info;
+    else if (r.kind === 'swap') e.info.swap = r.data;
     else {
       e.info.path = r.path;
       if (r.url) e.info.url = r.url;
@@ -335,6 +403,12 @@ export class ProjectService {
 
 /** Resultado vindo do auxiliar (dados de fora: confere tipos e tamanhos). */
 function parseResult(x: Record<string, unknown>, kind: ProjectJob['kind']): ProjectResult {
+  if (kind.startsWith('swap-')) {
+    if (x.ok !== true) return { ok: false, error: str(x.error) || tr('o auxiliar não conseguiu') };
+    // Dados de fora: só passam se forem JSON pequeno (o banco de contas confere o formato de cada campo).
+    const data = x.data ?? {};
+    return JSON.stringify(data).length <= 200_000 ? { ok: true, kind: 'swap', data } : { ok: false, error: tr('resposta grande demais') };
+  }
   if (x.ok !== true) return { ok: false, error: str(x.error) || tr('o auxiliar não conseguiu') };
   if (kind === 'info') {
     const i = x.info && typeof x.info === 'object' ? (x.info as Record<string, unknown>) : {};
@@ -345,5 +419,6 @@ function parseResult(x: Record<string, unknown>, kind: ProjectJob['kind']): Proj
   if (!path || !isAbs(path) || path.length > 1_200) return { ok: false, error: tr('o auxiliar devolveu um caminho inválido') };
   const url = str(x.url);
   const note = str(x.note);
+  if (kind !== 'create' && kind !== 'clone' && kind !== 'pdf') return { ok: false, error: tr('o auxiliar devolveu um resultado inesperado') };
   return { ok: true, kind, path, ...(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(url) ? { url } : {}), ...(note ? { note } : {}) };
 }

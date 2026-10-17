@@ -22,6 +22,7 @@ import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../s
 import type { SpawnFolder } from '../spawn/folders';
 import type { CustomAgentStore } from '../spawn/custom-agents';
 import type { ProjectService } from '../projects/projects';
+import type { AccountBank } from '../accounts/bank';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
@@ -79,6 +80,8 @@ export interface ApiDeps {
   aiMemory?: () => { enabled: boolean; url?: string; published: number; lastAt?: number; lastError?: string };
   /** Novo projeto (/api/projects e, para o auxiliar do host, /api/host/projects/*; projects/projects.ts). */
   projects?: ProjectService;
+  /** Banco de contas do Claude (claude-swap; /api/swap/*; accounts/bank.ts). */
+  swap?: AccountBank;
   /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
   attachments?: AttachmentStore;
   /** Ditado (/api/dictation e, para o auxiliar do host, /api/host/dictation/*; dictation/dictation.ts). */
@@ -695,6 +698,53 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
             sendJson(res, 200, { ok: true });
           })
           .catch((err) => fail(res, err));
+      }
+      return true;
+    }
+    if (path === '/api/swap' || path.startsWith('/api/swap/')) {
+      // Contas do Claude: ver é para quem usa o escritório; mudar (trocar, conectar, chave, opção) é do administrador.
+      const bank = deps.swap;
+      const user = deps.loginUser?.(req);
+      const isRead2 = isRead && path === '/api/swap';
+      if (!bank) {
+        req.resume();
+        sendJson(res, 403, { error: tr('banco de contas desligado (ligue o Novo agente com HABBLAUD_PTY=1)') });
+      } else if (!trusted(req, 'spawn')) {
+        req.resume();
+        sendJson(res, 403, { error: denied(req, tr('as contas só são vistas pelo próprio computador ou com login')) });
+      } else if (!isRead2 && user && user.role !== 'admin') {
+        req.resume();
+        sendJson(res, 403, { error: tr('só administradores trocam ou conectam contas') });
+      } else if (isRead2) {
+        bank.refreshIfStale();
+        sendJson(res, 200, bank.view());
+      } else if (method !== 'POST' && method !== 'PUT') methodNotAllowed(res, 'POST');
+      else {
+        readJson(req)
+          .then(async (body) => {
+            const b = (body ?? {}) as Record<string, unknown>;
+            switch (path) {
+              case '/api/swap/refresh':
+                await bank.refresh();
+                return sendJson(res, 200, bank.view());
+              case '/api/swap/switch':
+                return sendJson(res, 200, await bank.switchTo(Number(b.target)));
+              case '/api/swap/token':
+                return sendJson(res, 200, await bank.addToken(String(b.token ?? ''), typeof b.label === 'string' ? b.label : undefined));
+              case '/api/swap/login/start':
+                return sendJson(res, 200, await bank.loginStart());
+              case '/api/swap/login/finish':
+                return sendJson(res, 200, await bank.loginFinish(String(b.loginId ?? ''), String(b.code ?? '')));
+              case '/api/swap/login/cancel':
+                await bank.loginCancel(String(b.loginId ?? ''));
+                return sendJson(res, 200, { ok: true });
+              case '/api/swap/settings':
+                return sendJson(res, 200, bank.setSettings(b));
+              default:
+                return sendJson(res, 404, { error: tr('rota desconhecida') });
+            }
+          })
+          .catch((err) => (err instanceof HttpError ? fail(res, err) : sendJson(res, 400, { error: String((err as Error)?.message ?? err) })));
       }
       return true;
     }

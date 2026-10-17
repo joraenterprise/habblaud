@@ -23,6 +23,7 @@ import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
 import { tr } from '../shared/i18n';
 import { parseProjectJob, runProjectJob, type ProjectResult, type ProjectJob } from '../server/projects/projects';
+import { SwapHost } from '../server/accounts/swap-host';
 import { createCliRunner, createOpener, folderProblem, launch, parseSpawn, type CliRunner, type Opener, type SpawnHow } from '../server/spawn/spawn';
 import { runnableClaudeBin } from '../server/claude-bin';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
@@ -272,7 +273,7 @@ export async function projectRound(
     const r: ProjectResult = 'error' in job ? { ok: false, error: job.error } : await run(job);
     results.push({ id, ...r });
     if (!r.ok) log(tr('✗ projeto: {0}', [r.error]));
-    else if (r.kind !== 'info') log(r.note ? tr('✓ projeto em {0} ({1})', [r.path, r.note]) : tr('✓ projeto em {0}', [r.path]));
+    else if (r.kind !== 'info' && r.kind !== 'swap') log(r.note ? tr('✓ projeto em {0} ({1})', [r.path, r.note]) : tr('✓ projeto em {0}', [r.path]));
   }
   if (results.length) await post('/api/host/projects/ack', { results });
   return { state: 'ok', results: results.map((r) => ({ id: r.id, ok: r.ok })) as BridgeResult[] };
@@ -370,6 +371,8 @@ async function main(): Promise<void> {
   const open = createOpener();
   const claudeBin = runnableClaudeBin(process.env);
   const cli = claudeBin ? createCliRunner(claudeBin) : undefined;
+  // Banco de contas (claude-swap) deste computador: listar, trocar, conectar pelo login, chave de API.
+  const swapHost = new SwapHost({ ...(claudeBin ? { claude: claudeBin } : {}) });
   const post = httpPost(parsed.port);
   const log = (line: string) => console.log(`[codex-bridge] ${line}`);
   log(
@@ -407,7 +410,7 @@ async function main(): Promise<void> {
       if (spawned.state === 'refused') spawnRetryAt = Date.now() + REFUSED_RETRY_MS;
       else
         await projectRound(post, log, (job) =>
-          runProjectJob(job, { inside: (p) => insideKnownFolder(p, { accountDirs: discoverClaudeDirs(process.env), roots: [...tempRoots(), attachmentsRoot()] }) }),
+          runProjectJob(job, { swap: swapHost, inside: (p) => insideKnownFolder(p, { accountDirs: discoverClaudeDirs(process.env), roots: [...tempRoots(), attachmentsRoot()] }) }),
         );
     }
     const r = run ? await round(post, run, log) : spawned;
