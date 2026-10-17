@@ -41,6 +41,9 @@
     "codex:uninstall": "tsx scripts/codex-install.ts uninstall",
     "codex:status": "tsx scripts/codex-install.ts status",
     "codex:bridge": "tsx scripts/codex-bridge.ts",
+    "memory:install": "tsx scripts/memory-install.ts install",
+    "memory:status": "tsx scripts/memory-install.ts status",
+    "memory:uninstall": "tsx scripts/memory-install.ts uninstall",
     "remote:setup": "tsx scripts/remote-setup.ts",
     "remote:mdns": "tsx scripts/remote-mdns.ts",
     "release": "tsx scripts/release.ts"

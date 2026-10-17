@@ -225,6 +225,26 @@ Depois, **abra o Codex e aprove os hooks do Habblaud em `/hooks`**: o Codex só 
 aprova (o Habblaud nunca grava essa aprovação). Com o Habblaud no Docker, para mandar mensagens às sessões do Codex
 deixe também `npm run codex:bridge` rodando no Mac (veja [Codex](#codex)).
 
+### 5. Memória do projeto (ai-memory)
+
+O Habblaud tem memória própria, feita com o [ai-memory](https://github.com/akitaonrails/ai-memory) (MIT): uma wiki em
+markdown, versionada em git, por projeto. Ela **não depende da conta do Claude nem da ferramenta**. Se você trocar de
+conta (ou passar do Claude Code para o Codex), a sessão nova no mesmo projeto encontra o que foi feito e decidido.
+
+- **Servidor:** sobe junto com o `npm run docker:up`, como o serviço `ai-memory` do Compose. A versão é fixa
+  (`scripts/memory.ts`), a porta fica só no próprio computador (`127.0.0.1:49374`), há token e os dados ficam no
+  volume `ai-memory-data`. O token é criado sozinho em `~/.habblaud/ai-memory-token` (permissão 600) na máquina dos
+  agentes. Com o Docker no WSL e os agentes no Windows, ele fica na `.habblaud` do Windows, a mesma pasta do uso.
+- **Contas:** rode `npm run memory:install` na máquina onde os agentes rodam. Ele baixa o cliente da versão fixa
+  (checksum conferido) e liga, em cada conta do Claude Code, os hooks que gravam o que a sessão faz e as ferramentas
+  de memória (MCP). Com `-- --codex`, também no Codex. Para conferir, `npm run memory:status`; para desfazer,
+  `npm run memory:uninstall`.
+- **O que entra:** os hooks gravam o esqueleto de cada sessão (pedidos, ferramentas, handoff para o próximo agente).
+  O Habblaud publica cada pedido concluído com o **pedido completo, a resposta final e os arquivos gerados**. Os
+  agentes personalizados registram decisões em `decisoes/<tema>.md` (a seção "Memória do projeto" das instruções;
+  a skill `/criar-agente` já inclui).
+- **Desligar:** `HABBLAUD_AI_MEMORY=0` no `.env` e `npm run docker:up`. A memória gravada continua no volume.
+
 ### Abrir no celular (opcional)
 
 Por padrão o Habblaud só aceita conexões do próprio computador. Para abrir no celular (no mesmo Wi-Fi), com Docker:

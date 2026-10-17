@@ -29,6 +29,7 @@
 // Uso de 5h/semanal ao vivo: o mod do Habblaud (npm run mod:install; Claude Code 2.1.287+) ou, em
 // versões anteriores, o tap de statusline (npm run usage:install). Os dois gravam os números na pasta
 // montada em /usage. Sem eles, vale o cache do /usage lido das contas ao subir.
+import { AI_MEMORY_HOST_URL, AI_MEMORY_PROFILE, AI_MEMORY_VERSION, composeMemoryEnv, memoryDisabled, resolveToken } from './memory';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -493,9 +494,12 @@ function checkDocker(): void {
   if (compose.status !== 0) fail(tr('o Docker Compose v2 ("docker compose") não está disponível. Atualize o Docker Desktop.'));
 }
 
+/** Variáveis da memória para o Compose (perfil, token, endereço); preenchidas pelo up() e pelo down(). */
+let memoryEnv: Record<string, string> = {};
+
 function compose(args: string[], port: number): void {
   // HABBLAUD_PORT explícito: vale sobre um eventual .env na pasta do projeto.
-  const res = spawnSync('docker', ['compose', ...args], { cwd: ROOT, stdio: 'inherit', env: { ...process.env, HABBLAUD_PORT: String(port) } });
+  const res = spawnSync('docker', ['compose', ...args], { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...memoryEnv, HABBLAUD_PORT: String(port) } });
   if (res.error) fail(tr('não consegui rodar "docker compose {0}": {1}', [args.join(' '), res.error.message]));
   if (res.status !== 0) fail(tr('"docker compose {0}" falhou (código {1}).', [args.join(' '), res.status ?? res.signal]));
 }
@@ -619,8 +623,42 @@ async function waitHealthy(baseUrl: string): Promise<Health | undefined> {
 function down(port: number): void {
   checkDocker();
   say(tr('Derrubando o container…'));
+  // O serviço da memória tem perfil: sem ele no ambiente, o down não o pararia.
+  if (!memoryDisabled(process.env)) memoryEnv = { COMPOSE_PROFILES: AI_MEMORY_PROFILE };
   compose(['down'], port);
   say(tr('Pronto. Os nomes dos personagens continuam guardados no volume habblaud-data.'));
+}
+
+/**
+ * Memória (ai-memory): liga o perfil do serviço no Compose com o token (do ambiente, do .env, do arquivo da máquina
+ * dos agentes ou um novo) e tira o container avulso de quem instalou à mão antes (o volume ai-memory-data fica).
+ * Devolve false com a memória desligada (HABBLAUD_AI_MEMORY=0).
+ */
+function prepareMemory(): boolean {
+  if (memoryDisabled(process.env)) {
+    say(tr('Memória (ai-memory): desligada (HABBLAUD_AI_MEMORY=0).'));
+    memoryEnv = {};
+    return false;
+  }
+  let envText: string | undefined;
+  try {
+    envText = readFileSync(ENV_FILE, 'utf8');
+  } catch {
+    // sem .env: tudo bem
+  }
+  const t = resolveToken({ env: process.env, home: HOME, envText, create: true });
+  memoryEnv = composeMemoryEnv(process.env, t?.token);
+  if (t?.source === 'new') say(tr('Memória (ai-memory): token novo gravado em {0} (permissão 600).', [t.path ? tildify(t.path) : '?']));
+  else if (t?.path) say(tr('Memória (ai-memory): token de {0}.', [tildify(t.path)]));
+  // Container ai-memory que não é deste Compose (instalação à mão): sai para o serviço entrar no lugar.
+  const c = dockerQuiet(['container', 'inspect', '--format', '{{index .Config.Labels "com.docker.compose.project"}}', 'ai-memory']);
+  if (c.ok && c.out.trim() !== 'habblaud') {
+    const rm = dockerQuiet(['rm', '-f', 'ai-memory']);
+    if (rm.ok) say(tr('Memória (ai-memory): o container avulso saiu; o serviço do Compose usa o mesmo volume (ai-memory-data).'));
+    else warn(tr('não consegui tirar o container ai-memory avulso ({0}); o serviço da memória pode não subir.', [rm.error]));
+  }
+  say(tr('Memória (ai-memory {0}): servidor em {1}, só no próprio computador.', [AI_MEMORY_VERSION, AI_MEMORY_HOST_URL]));
+  return true;
 }
 
 async function up(opts: Options, port: number): Promise<void> {
@@ -685,6 +723,7 @@ async function up(opts: Options, port: number): Promise<void> {
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));
 
+  const memory = prepareMemory();
   const plan = planUp(inspectDocker(), opts.build);
   const { copyFailed } = runPlan(plan, port, opts.build);
 
@@ -709,6 +748,19 @@ async function up(opts: Options, port: number): Promise<void> {
     say(`  Codex ${m.account.short} (${m.account.id}): ${state}${usage ? ` · ${USAGE_STATUS[usage]}` : ''}`);
   }
   for (const line of modHint(updateMods(dirs, accounts))) say(line);
+  if (memory) {
+    const m = (health as { aiMemory?: { enabled?: boolean; published?: number; lastError?: string } }).aiMemory;
+    say(
+      m?.enabled
+        ? tr('  Memória (ai-memory {0}): no ar em {1}; {2} pedidos publicados{3}. Para as contas gravarem nela: npm run memory:install', [
+            AI_MEMORY_VERSION,
+            AI_MEMORY_HOST_URL,
+            m.published ?? 0,
+            m.lastError ? tr(' (último erro: {0})', [m.lastError]) : '',
+          ])
+        : tr('  Memória (ai-memory {0}): servidor em {1}; o Habblaud começa a publicar em instantes.', [AI_MEMORY_VERSION, AI_MEMORY_HOST_URL]),
+    );
+  }
   // Com a cópia falha, os dados só existem no volume antigo: nada de sugerir apagá-lo.
   if (plan.cleanup.length && !copyFailed) say(tr('  Sobrou do CodeTown; depois de conferir o escritório, apague com: {0}', [plan.cleanup.join(' · ')]));
   say(tr('  Logs: npm run docker:logs · Parar: npm run docker:down'));

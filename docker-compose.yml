@@ -42,7 +42,8 @@ services:
       # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
       # codex:bridge; o terminal interativo em si não roda no container).
       HABBLAUD_PTY: ${HABBLAUD_PTY:-}
-      # Memória no ai-memory (server/memory/ai-memory.ts): o servidor dele no host, visto de dentro do container.
+      # Memória (serviço ai-memory abaixo; server/memory/ai-memory.ts): o docker:up preenche os dois quando ela está
+      # ligada (HABBLAUD_AI_MEMORY=0 no .env desliga).
       HABBLAUD_AI_MEMORY_URL: ${HABBLAUD_AI_MEMORY_URL:-}
       HABBLAUD_AI_MEMORY_TOKEN: ${HABBLAUD_AI_MEMORY_TOKEN:-}
       # Acesso remoto com login (server/http/remote.ts).
@@ -62,5 +63,30 @@ services:
     # Processo init mínimo: repassa sinais e recolhe processos órfãos.
     init: true
 
+  # Memória do projeto (github.com/akitaonrails/ai-memory, MIT): wiki em markdown versionada em git + índice SQLite.
+  # Os hooks e o MCP das contas (npm run memory:install) gravam aqui o que cada sessão faz; o Habblaud publica cada
+  # pedido concluído. A memória é do projeto, não da conta do Claude: outra conta ou outra ferramenta continua de onde
+  # parou. Só sobe com o perfil "memoria" (o docker:up liga), com versão fixa e token (scripts/memory.ts).
+  ai-memory:
+    image: akitaonrails/ai-memory:3.1.0
+    container_name: ai-memory
+    profiles: ["memoria"]
+    restart: unless-stopped
+    # Só o próprio computador alcança (hooks e MCP das contas); o Habblaud fala pela rede do Compose.
+    ports:
+      - "127.0.0.1:49374:49374"
+    volumes:
+      - ai-memory-data:/data
+    environment:
+      AI_MEMORY_AUTH_TOKEN: ${HABBLAUD_AI_MEMORY_TOKEN:-}
+      # Nomes aceitos no Host: o loopback (hooks), o Docker Desktop e o nome do serviço (o Habblaud).
+      AI_MEMORY_ALLOWED_HOSTS: "localhost,127.0.0.1,::1,host.docker.internal,ai-memory"
+    security_opt:
+      - no-new-privileges:true
+    init: true
+
 volumes:
   habblaud-data:
+  # Nome fixo: o mesmo volume de quem já usava o ai-memory num container avulso.
+  ai-memory-data:
+    name: ai-memory-data
