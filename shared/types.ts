@@ -382,6 +382,8 @@ export interface AccessInfo {
   spawn: boolean;
   /** Pode criar e editar agentes personalizados (/api/custom-agents). */
   customAgents?: boolean;
+  /** Login por pessoa (HABBLAUD_LOGIN=1): quem está logado. */
+  user?: { id: string; username: string; name: string; role: 'admin' | 'member' };
 }
 
 export interface FeedItem {

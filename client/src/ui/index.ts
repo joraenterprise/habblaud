@@ -21,6 +21,7 @@ import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
 import { Deliveries } from './deliveries';
 import { ChatDialog } from './chat';
+import { UserMenu } from './users';
 import { HoverTip } from './hovertip';
 import { hasRunningShells } from './model';
 import { hasCodexPermission } from './provider';
@@ -213,6 +214,9 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     if (url.search && location.search === url.search) window.history.replaceState(null, '', location.pathname);
   };
   if (typeof location !== 'undefined') openLink(new URL(location.href));
+  // Login por pessoa: o botão de quem está logado (menu com senha, Usuários e Sair), no fim da barra.
+  const userMenu = new UserMenu(ctx);
+  topbar.panelGroup.append(userMenu.button);
   // Conversa com o agente no centro da tela (Ver tudo / Conversar nos detalhes).
   const chat = new ChatDialog(ctx);
   ctx.openChat = (id) => chat.open(id);
@@ -246,7 +250,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, chat, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, chat, userMenu, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;

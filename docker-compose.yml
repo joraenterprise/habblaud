@@ -42,6 +42,10 @@ services:
       # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
       # codex:bridge; o terminal interativo em si não roda no container).
       HABBLAUD_PTY: ${HABBLAUD_PTY:-}
+      # 1 liga o login por pessoa (server/auth/): usuários com senha; o primeiro acesso cria o administrador.
+      HABBLAUD_LOGIN: ${HABBLAUD_LOGIN:-}
+      # 1 marca o cookie de sessão como Secure (com HTTPS na frente, no deploy).
+      HABBLAUD_LOGIN_SECURE_COOKIE: ${HABBLAUD_LOGIN_SECURE_COOKIE:-}
       # Memória (serviço ai-memory abaixo; server/memory/ai-memory.ts): o docker:up preenche os dois quando ela está
       # ligada (HABBLAUD_AI_MEMORY=0 no .env desliga).
       HABBLAUD_AI_MEMORY_URL: ${HABBLAUD_AI_MEMORY_URL:-}

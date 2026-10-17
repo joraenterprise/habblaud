@@ -7,9 +7,11 @@ import { join } from 'node:path';
 import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
 import { isTruthy, loadConfig, messagesOffReason, terminalOffReason } from './config';
-import { createApiHandler, sendJson } from './http/app';
+import { createApiHandler, isLocalOnlyPath, sendJson } from './http/app';
 import { createRequestGuard, isLoopbackHost } from './http/guard';
 import { createRemoteGate, isRemoteRequest, loadSecret, RemoteSessions, startRemoteListener, type RemoteListener } from './http/remote';
+import { createLoginGate, requestUser } from './auth/gate';
+import { UserSessions, UserStore } from './auth/users';
 import { Hub } from './http/sse';
 import { createStaticHandler } from './http/static';
 import { TerminalStreams } from './http/terminal';
@@ -334,6 +336,7 @@ const api = createApiHandler({
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
+  loginUser: config.login ? (req) => requestUser(req) : undefined,
 });
 
 const server = http.createServer();
@@ -367,10 +370,24 @@ if (config.dev) {
 // Host/Origin/Content-Type: barra DNS rebinding e CSRF antes de qualquer rota (inclusive o Vite).
 const guard = createRequestGuard({ allowedHosts: config.allowedHosts });
 
+// Login por pessoa (HABBLAUD_LOGIN=1): usuários em <dataDir>/users.json; o primeiro acesso cria o administrador.
+const userStore = config.login ? new UserStore(join(config.dataDir, 'users.json')) : undefined;
+const loginGate = userStore
+  ? createLoginGate({
+      users: userStore,
+      sessions: new UserSessions(loadSecret(join(config.dataDir, 'login-secret')), userStore, Date.now, join(config.dataDir, 'login-revoked.json')),
+      // Hooks, plugins, auxiliar do host e o /api/health do docker:up: sem login, só pelo próprio computador.
+      isMachinePath: (p) => isLocalOnlyPath(p) || p === '/api/mod/summary' || p === '/api/health',
+      secure: isTruthy(process.env.HABBLAUD_LOGIN_SECURE_COOKIE),
+    })
+  : undefined;
+if (userStore) log.info(userStore.count() ? tr('   Login por pessoa: ligado ({0} usuários).', [userStore.count()]) : tr('   Login por pessoa: ligado; abra o Habblaud e crie o administrador no primeiro acesso.'));
+
 server.on('request', (req, res) => {
   const url = parseUrl(req);
   try {
     if (guard(req, res)) return;
+    if (loginGate?.(req, res, url)) return;
     if (!api(req, res, url)) fallback(req, res, url);
   } catch (err) {
     log.warn(tr('Erro ao responder {0} {1}: {2}', [req.method, url.pathname, errMsg(err)]));

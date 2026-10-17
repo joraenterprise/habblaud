@@ -14,7 +14,8 @@ export function onAccessChange(cb: () => void): () => void {
 }
 
 function sameAccess(a: AccessInfo | null, b: AccessInfo | null): boolean {
-  return !!a && !!b && (Object.keys(a) as (keyof AccessInfo)[]).every((k) => a[k] === b[k]) && Object.keys(a).length === Object.keys(b).length;
+  // O usuário logado é um objeto: compara pelo conteúdo.
+  return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Hostname do próprio computador (localhost, *.localhost, 127.x, ::1). */

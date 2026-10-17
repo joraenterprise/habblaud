@@ -54,6 +54,11 @@ export interface ServerConfig {
   codex: boolean;
   /** Segunda porta, com login, para o celular na rede local (http/remote.ts); ausente = desligada. */
   remote?: RemoteConfig;
+  /**
+   * Login por pessoa na porta principal (HABBLAUD_LOGIN=1; server/auth/): toda requisição precisa de um usuário logado,
+   * e quem está logado tem o que antes só valia pelo próprio computador (terminal, mensagens, Novo agente).
+   */
+  login: boolean;
   /** Por que o acesso remoto ficou desligado quando as variáveis estão incompletas. */
   remoteWarning?: string;
 }
@@ -129,6 +134,8 @@ export function isLoopbackBind(value: string | undefined): boolean {
 export function terminalOffReason(env: NodeJS.ProcessEnv, host: string, inDocker: boolean): string | undefined {
   const flag = env.HABBLAUD_TERMINAL?.trim();
   if (flag && !isTruthy(flag)) return `HABBLAUD_TERMINAL=${flag}`;
+  // Com login por pessoa, quem chega já se identificou: a porta pode estar na rede (no servidor, atrás de HTTPS).
+  if (isTruthy(env.HABBLAUD_LOGIN)) return undefined;
   if (inDocker) {
     const bind = env.HABBLAUD_BIND?.trim();
     if (!bind) return tr('HABBLAUD_BIND não chegou ao container, então a porta pode estar exposta na rede');
@@ -178,5 +185,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     codex: !env.HABBLAUD_CODEX?.trim() || isTruthy(env.HABBLAUD_CODEX),
     remote: remote.config,
     remoteWarning: remote.warning,
+    login: isTruthy(env.HABBLAUD_LOGIN),
   };
 }

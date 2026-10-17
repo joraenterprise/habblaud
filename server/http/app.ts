@@ -73,6 +73,8 @@ export interface ApiDeps {
   spawnFolders?: () => Promise<SpawnFolder[]>;
   /** Agentes personalizados (/api/custom-agents; spawn/custom-agents.ts). Só com a trava do terminal. */
   customAgents?: CustomAgentStore;
+  /** Login por pessoa (server/auth/): o usuário desta requisição; quem está logado vale como acesso local. */
+  loginUser?: (req: IncomingMessage) => { id: string; username: string; name: string; role: 'admin' | 'member' } | undefined;
   /** Publicação dos pedidos concluídos no ai-memory (memory/ai-memory.ts): o estado vai no /api/health. */
   aiMemory?: () => { enabled: boolean; url?: string; published: number; lastAt?: number; lastError?: string };
   /** Novo projeto (/api/projects e, para o auxiliar do host, /api/host/projects/*; projects/projects.ts). */
@@ -127,7 +129,7 @@ function isLoopbackAddress(addr: string | undefined): boolean {
  * uma sessão, as rodadas do auxiliar. Só valem pela porta local; pela remota, nem com login (o celular aprova e manda
  * mensagens pelas rotas da página).
  */
-function isLocalOnlyPath(path: string): boolean {
+export function isLocalOnlyPath(path: string): boolean {
   return (
     path === '/api/permissions' ||
     /^\/api\/permissions\/[^/]+\/wait$/.test(path) ||
@@ -280,7 +282,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
    * que HABBLAUD_REMOTE_ALLOW liberar (`feature` ausente = nunca pela porta remota).
    */
   const trusted = (req: IncomingMessage, feature?: RemoteFeature): boolean =>
-    isRemote(req) ? !!feature && !!deps.remote?.allows(feature) : isLoopbackHost(req.headers.host);
+    isRemote(req) ? !!feature && !!deps.remote?.allows(feature) : !!deps.loginUser?.(req) || isLoopbackHost(req.headers.host);
   const denied = (req: IncomingMessage, localMessage: string): string =>
     isRemote(req) ? tr('não liberado no acesso remoto (veja HABBLAUD_REMOTE_ALLOW)') : localMessage;
 
@@ -399,6 +401,11 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           spawn: !!deps.spawn && trusted(req, 'spawn'),
           customAgents: !!deps.customAgents && !!deps.terminal && trusted(req, 'spawn'),
         };
+        const u = deps.loginUser?.(req);
+        if (u) {
+          access.local = true;
+          access.user = { id: u.id, username: u.username, name: u.name, role: u.role };
+        }
         sendJson(res, 200, access);
       }
       return true;
