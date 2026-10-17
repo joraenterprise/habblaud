@@ -24,7 +24,7 @@ describe('gerar PDF de um HTML', () => {
     expect(calls[0].bin).toBe('/bin/edge');
     expect(calls[0].args).toEqual(expect.arrayContaining(['--headless', '--print-to-pdf=/p/rel.pdf']));
     // No Windows o caminho ganha a unidade (file:///C:/p/rel.html).
-    expect(calls[0].args.at(-1)).toMatch(/^file:\/\/\/(?:[A-Z]:)?\/p\/rel\.html$/);
+    expect(calls[0].args.at(-1)).toMatch(/^file:\/\/(?:\/[A-Z]:)?\/p\/rel\.html$/);
     expect(calls[0].args.some((a) => a.startsWith('--user-data-dir='))).toBe(true);
   });
 
