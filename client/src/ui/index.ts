@@ -219,8 +219,8 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const userMenu = new UserMenu(ctx);
   // Contas do Claude (claude-swap): uso de cada uma, troca e o aviso de cota.
   const accounts = new AccountsPanel(ctx);
-  topbar.panelGroup.prepend(accounts.button);
-  topbar.panelGroup.append(userMenu.button);
+  topbar.addPanelButton(accounts.button);
+  topbar.addPanelButton(userMenu.button);
   // Conversa com o agente no centro da tela (Ver tudo / Conversar nos detalhes).
   const chat = new ChatDialog(ctx);
   ctx.openChat = (id) => chat.open(id);
