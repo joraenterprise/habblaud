@@ -273,6 +273,9 @@ O botão **Contas** (cartões, na barra do topo) mostra o banco de contas do
 - **Chave de API (Console):** cadastra uma conta paga pelo uso.
 - **Aviso de cota:** acima de 90% da janela, o escritório avisa e sugere a conta com mais folga. A troca entre
   assinaturas é sempre um clique de alguém.
+- **Botão "Trocar conta" (96%):** com a conta ativa a partir de 96% da janela, aparece na barra do topo um botão que
+  troca (pelo `cswap switch`, depois de confirmar) para a assinatura com mais folga, ou para a conta de chave de API se
+  nenhuma tiver. O Habblaud não troca sozinho: só no clique.
 - **Troca automática:** só para a conta de chave de API, quando a assinatura ativa esgota, e de volta quando ela tiver
   folga. É opcional e começa desligada.
 - **Quem faz o quê:** quem roda o `cswap` e o login é o auxiliar do host (`npm run codex:bridge`). O caminho do

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiFallbackDecision, needsWarning, parseAdded, parseLoginUrl, parseSwapAccounts, suggestTarget, type SwapAccount } from './swap';
+import { apiFallbackDecision, needsWarning, parseAdded, parseLoginUrl, parseSwapAccounts, suggestTarget, swapOffer, type SwapAccount } from './swap';
 
 const acc = (number: number, five: number | undefined, over: Partial<SwapAccount> = {}): SwapAccount => ({
   number,
@@ -41,6 +41,18 @@ describe('banco de contas: aviso e sugestão', () => {
     expect(suggestTarget(list)?.number).toBe(5);
     expect(needsWarning([acc(1, 50, { active: true })])).toBeUndefined();
     expect(suggestTarget([acc(1, 95, { active: true }), acc(2, 92)])).toBeUndefined();
+  });
+});
+
+describe('banco de contas: botão Trocar conta a partir de 96%', () => {
+  it('aparece só a partir de 96% e oferece a assinatura com mais folga, senão a de API', () => {
+    expect(swapOffer([acc(1, 95, { active: true }), acc(2, 10)])).toBeUndefined();
+    expect(swapOffer([acc(1, 96, { active: true }), acc(2, 40), acc(3, 20), acc(4, undefined, { status: 'api_key' })])?.target?.number).toBe(3);
+    expect(swapOffer([acc(1, 97, { active: true }), acc(2, 98), acc(4, undefined, { status: 'api_key' })])?.target?.number).toBe(4);
+    const none = swapOffer([acc(1, 99, { active: true }), acc(2, 98)]);
+    expect(none?.active.number).toBe(1);
+    expect(none?.target).toBeUndefined();
+    expect(swapOffer([acc(1, undefined, { status: 'api_key', active: true })])).toBeUndefined();
   });
 });
 

@@ -28,6 +28,8 @@ export interface SwapAccount {
 
 /** Acima disto (5h ou 7 dias), o escritório avisa e sugere trocar. */
 export const WARN_PCT = 90;
+/** A partir disto, a barra do topo mostra o botão "Trocar conta" (a troca é sempre o clique de alguém). */
+export const SWAP_PCT = 96;
 /** A conta de assinatura esgotou (a troca automática para a API pode agir). */
 export const EXHAUSTED_PCT = 100;
 /** Para voltar da API para a assinatura, ela precisa estar abaixo disto. */
@@ -103,6 +105,20 @@ export function suggestTarget(accounts: readonly SwapAccount[]): SwapAccount | u
 export function needsWarning(accounts: readonly SwapAccount[]): SwapAccount | undefined {
   const active = accounts.find((a) => a.active);
   return active && !isApiAccount(active) && (peakPct(active) ?? 0) >= WARN_PCT ? active : undefined;
+}
+
+/**
+ * A conta ativa (de assinatura) chegou a SWAP_PCT? Então diz para onde o botão "Trocar conta" levaria: a assinatura
+ * com mais folga abaixo de SWAP_PCT; sem nenhuma, a conta de chave de API. Nada troca sozinho: é o que o botão oferece.
+ */
+export function swapOffer(accounts: readonly SwapAccount[]): { active: SwapAccount; target?: SwapAccount } | undefined {
+  const active = accounts.find((a) => a.active);
+  if (!active || isApiAccount(active) || (peakPct(active) ?? 0) < SWAP_PCT) return undefined;
+  const sub = accounts
+    .filter((a) => !a.active && usableSubscription(a) && (peakPct(a) ?? 100) < SWAP_PCT)
+    .sort((x, y) => (peakPct(x) ?? 100) - (peakPct(y) ?? 100) || x.number - y.number)[0];
+  const target = sub ?? accounts.find((a) => isApiAccount(a) && !a.disabled);
+  return target ? { active, target } : { active };
 }
 
 export interface ApiFallbackState {

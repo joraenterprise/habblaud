@@ -2,7 +2,7 @@
 // cada conta, a troca da conta ativa (um clique de alguém), conectar conta pelo login do Claude (link + código colado),
 // cadastrar uma chave de API e a opção de trocar sozinho para a conta de API quando a assinatura esgotar. E o aviso no
 // topo quando a conta ativa passa de 90%, sugerindo a com mais folga.
-import { isApiAccount, peakPct, WARN_PCT, type SwapAccount } from '../../../shared/swap';
+import { isApiAccount, peakPct, swapOffer, WARN_PCT, type SwapAccount } from '../../../shared/swap';
 import { tr } from '../../../shared/i18n';
 import { access } from '../net/access';
 import type { UiComponent, UiContext } from './context';
@@ -51,6 +51,8 @@ export class AccountsPanel implements UiComponent {
   private readonly autoApi: HTMLInputElement;
   /** "+ Adicionar conta" ao lado dos cartões de uso, na barra do topo. */
   readonly addButton: HTMLButtonElement;
+  /** "Trocar conta" na barra do topo: aparece com a conta ativa a partir de SWAP_PCT; troca só no clique. */
+  readonly swapButton: HTMLButtonElement;
   private readonly add: AddAccountDialog;
   private readonly adminBits: HTMLElement[] = [];
   private readonly banner: HTMLElement;
@@ -73,6 +75,7 @@ export class AccountsPanel implements UiComponent {
       this.autoApi,
       h('span', { text: tr('Quando a assinatura ativa esgotar, usar sozinho a conta de chave de API (paga por uso) e voltar quando a assinatura tiver folga.') }),
     );
+    this.swapButton = h('button', { class: 'ui-acc-swap', type: 'button', hidden: true, on: { click: () => this.swapNow() } });
     this.add = new AddAccountDialog(ctx.root, () => void this.load());
     const addInside = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
     this.addButton = h('button', { class: 'ui-acc-add', type: 'button', hidden: true, attrs: { title: tr('Adicionar uma conta do Claude ao banco (claude-swap)') }, on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
@@ -137,6 +140,33 @@ export class AccountsPanel implements UiComponent {
       this.list.replaceChildren(h('p', { class: 'ui-rename__hint', text: v.available ? tr('Nenhuma conta no banco ainda. Clique em + Adicionar conta.') : tr('O computador dos agentes não está conectado (npm run codex:bridge).') }));
     } else this.list.replaceChildren(...v.accounts.map((a) => this.row(a)));
     this.paintBanner();
+    this.paintSwap();
+  }
+
+  private paintSwap(): void {
+    const v = this.view;
+    const offer = v && access().spawn && this.isAdmin() ? swapOffer(v.accounts) : undefined;
+    setHidden(this.swapButton, !offer);
+    if (!offer) return;
+    const pct = Math.round(peakPct(offer.active) ?? 0);
+    setText(this.swapButton, offer.target ? tr('⇄ Trocar conta ({0}%)', [pct]) : tr('⚠ Conta em {0}%', [pct]));
+    this.swapButton.title = offer.target
+      ? tr('A conta {0} está em {1}% do limite. Clique para trocar para {2} (cswap switch).', [label(offer.active), pct, label(offer.target)])
+      : tr('A conta {0} está em {1}% do limite e não há outra conta com folga. Clique para ver as contas.', [label(offer.active), pct]);
+    this.swapButton.classList.toggle('is-stuck', !offer.target);
+  }
+
+  /** O clique no "Trocar conta": confirma e troca pelo cswap; sem conta com folga, abre a tela Contas. */
+  private swapNow(): void {
+    const offer = this.view ? swapOffer(this.view.accounts) : undefined;
+    if (!offer?.target) {
+      void this.open();
+      return;
+    }
+    const target = offer.target;
+    const extra = isApiAccount(target) ? ` ${tr('É uma conta de chave de API: cobra pelo uso.')}` : '';
+    if (!confirm(tr('Trocar a conta ativa de {0} ({1}%) para {2}? Os agentes rodando passam a usar essa conta na próxima mensagem.', [label(offer.active), Math.round(peakPct(offer.active) ?? 0), label(target)]) + extra)) return;
+    void this.act(() => api<SwapView>('/api/swap/switch', 'POST', { target: target.number }));
   }
 
   private bar(title: string, w?: { pct: number; resetsAt?: string }): HTMLElement {
