@@ -114,8 +114,18 @@ export class AccountBank {
     return this.view();
   }
 
-  async addToken(token: string, label?: string): Promise<SwapView> {
-    await this.job({ kind: 'swap-token', token, ...(label ? { label } : {}) });
+  async addToken(token: string, label?: string): Promise<{ added?: { number: number; email: string }; view: SwapView }> {
+    const info = await this.job({ kind: 'swap-token', token, ...(label ? { label } : {}) });
+    const added = (info.swap as { added?: { number?: unknown; email?: unknown } } | undefined)?.added;
+    await this.refresh();
+    return {
+      ...(typeof added?.number === 'number' && typeof added.email === 'string' ? { added: { number: added.number, email: added.email } } : {}),
+      view: this.view(),
+    };
+  }
+
+  async setAlias(target: number, name: string): Promise<SwapView> {
+    await this.job({ kind: 'swap-alias', target, name });
     await this.refresh();
     return this.view();
   }

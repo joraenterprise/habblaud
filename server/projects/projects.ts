@@ -46,7 +46,8 @@ export type ProjectJob =
   | { kind: 'swap-token'; token: string; label?: string }
   | { kind: 'swap-login-start' }
   | { kind: 'swap-login-finish'; loginId: string; code: string }
-  | { kind: 'swap-login-cancel'; loginId: string };
+  | { kind: 'swap-login-cancel'; loginId: string }
+  | { kind: 'swap-alias'; target: number; name: string };
 
 export interface ProjectHostInfo {
   home: string;
@@ -108,6 +109,13 @@ export function parseProjectJob(raw: unknown): ProjectJob | { error: string } {
   const kind = str(r.kind);
   if (kind === 'info') return { kind: 'info' };
   if (kind === 'swap-list' || kind === 'swap-login-start') return { kind };
+  if (kind === 'swap-alias') {
+    const target = Number(r.target);
+    const name = str(r.name);
+    if (!Number.isInteger(target) || target <= 0 || target >= 1000) return { error: tr('conta inválida') };
+    if (!/^[A-Za-z0-9._-]{1,32}$/.test(name)) return { error: tr('apelido: até 32 letras, números, ponto, hífen ou sublinhado') };
+    return { kind, target, name };
+  }
   if (kind === 'swap-switch') {
     const target = Number(r.target);
     return Number.isInteger(target) && target > 0 && target < 1000 ? { kind, target } : { error: tr('conta inválida') };
@@ -200,6 +208,7 @@ export interface RunDeps {
     loginStart(): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
     loginFinish(id: string, code: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
     loginCancel(id: string): { ok: true; data: unknown } | { ok: false; error: string };
+    setAlias(target: number, name: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
   };
   home?: string;
   exists?: (p: string) => boolean;
@@ -246,7 +255,9 @@ export async function runProjectJob(job: ProjectJob, deps: RunDeps = {}): Promis
                   ? await swap.loginFinish(job.loginId, job.code)
                   : job.kind === 'swap-login-cancel'
                     ? swap.loginCancel(job.loginId)
-                    : { ok: false as const, error: tr('pedido de conta inválido') };
+                    : job.kind === 'swap-alias'
+                      ? await swap.setAlias(job.target, job.name)
+                      : { ok: false as const, error: tr('pedido de conta inválido') };
       return r.ok ? { ok: true, kind: 'swap', data: r.data } : { ok: false, error: r.error };
     }
     if (job.kind === 'pdf') {

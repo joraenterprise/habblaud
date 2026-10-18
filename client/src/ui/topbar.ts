@@ -46,6 +46,8 @@ export class TopBar implements UiComponent {
   private feedBtn: HTMLButtonElement;
   private timelapseBtn: HTMLButtonElement;
   readonly settingsBtn: HTMLButtonElement;
+  /** Logo depois dos cartões de uso das contas: o "+ Adicionar conta" (ui/accounts.ts). */
+  readonly accountSlot: HTMLElement;
   private readonly spawnBtn: HTMLButtonElement;
   private readonly spawnPanel: SpawnPanel;
   private readonly agentsBtn: HTMLButtonElement;
@@ -100,6 +102,7 @@ export class TopBar implements UiComponent {
     }
 
     this.usage = new UsageCards(ctx);
+    this.accountSlot = h('div', { class: 'ui-topbar__acc-slot' });
 
     this.sidebarBtn = iconButton(ICONS.sidebar, tr('Painel lateral ( [ )'), () => ctx.togglePanel('sidebar'), 'ui-btn-sidebar');
     this.feedBtn = iconButton(ICONS.feed, tr('Feed de atividade ( ] )'), () => ctx.togglePanel('feed'), 'ui-btn-feed');
@@ -152,6 +155,7 @@ export class TopBar implements UiComponent {
       ),
       counterWrap,
       this.usage.el,
+      this.accountSlot,
       h('div', { class: 'ui-topbar__right' }, viewGroup, panelGroup),
     );
   }

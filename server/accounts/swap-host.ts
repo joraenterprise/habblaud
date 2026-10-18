@@ -86,6 +86,11 @@ export class SwapHost {
     }
   }
 
+  async setAlias(target: number, name: string): Promise<SwapResult> {
+    const r = await this.run(['alias', String(target), name]);
+    return r.ok ? { ok: true, data: {} } : { ok: false, error: (r.err || r.out).split('\n').find((l) => l.trim())?.slice(0, 300) ?? tr('o claude-swap recusou o apelido') };
+  }
+
   async addToken(token: string, label?: string): Promise<SwapResult> {
     const args = ['add-token', '-'];
     if (label) args.push('--email', label);

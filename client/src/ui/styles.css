@@ -10427,3 +10427,179 @@ html.is-replay #world {
     grid-template-columns: 60px 1fr 70px;
   }
 }
+
+/* "+ Adicionar conta" (ui/accounts.ts, ui/add-account.ts) */
+.ui-topbar__acc-slot {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.ui-acc-add {
+  height: 30px;
+  padding: 0 10px;
+  margin-left: 6px;
+  border-radius: 8px;
+  border: 1px dashed var(--ui-line-strong);
+  background: transparent;
+  color: var(--ui-muted);
+  font: 600 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-acc-add:hover {
+  border-style: solid;
+  border-color: var(--ui-accent);
+  color: var(--ui-text);
+}
+
+.ui-acc-add[hidden] {
+  display: none;
+}
+
+.ui-dialog.ui-add {
+  width: min(600px, calc(100vw - 32px));
+}
+
+.ui-add__body {
+  padding: 14px 22px 22px;
+  overflow-y: auto;
+}
+
+.ui-add__steps {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-add__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--ui-bg-soft);
+  color: var(--ui-faint);
+  font-size: 12.5px;
+}
+
+.ui-add__dot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--ui-line-strong);
+  font: 700 11px/1 var(--font-ui);
+}
+
+.ui-add__step.is-on {
+  color: var(--ui-text);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+
+.ui-add__step.is-on .ui-add__dot,
+.ui-add__step.is-done .ui-add__dot {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 30%, transparent);
+}
+
+.ui-add__step.is-done {
+  color: var(--ui-muted);
+}
+
+.ui-add__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ui-add__pane[hidden] {
+  display: none;
+}
+
+.ui-add__lead {
+  margin: 0;
+  font-size: 14px;
+}
+
+.ui-add__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ui-add__choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-line-strong);
+  background: var(--ui-bg-soft);
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-add__choice:hover {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-bg-soft));
+}
+
+.ui-add__choice span {
+  font-size: 12.5px;
+  color: var(--ui-muted);
+}
+
+.ui-add__howto {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.ui-add__open {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.ui-add__code {
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.ui-add__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ui-add__ok {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #5cc97b 25%, transparent);
+  color: #5cc97b;
+  font: 700 22px/1 var(--font-ui);
+}
+
+@media (max-width: 560px) {
+  .ui-add__choices {
+    grid-template-columns: 1fr;
+  }
+
+  .ui-acc-add {
+    padding: 0 8px;
+  }
+}

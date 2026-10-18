@@ -25,6 +25,7 @@ vi.mock('./update');
 vi.mock('./viewport');
 vi.mock('./topbar', () => ({ TopBar: class {
   panelGroup = { prepend() {} };
+  accountSlot = { prepend() {} };
   addPanelButton() {}
   render() {}
 } }));

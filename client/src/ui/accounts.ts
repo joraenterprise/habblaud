@@ -8,6 +8,7 @@ import { access } from '../net/access';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setHidden, setText } from './dom';
 import { ICONS } from './icons';
+import { AddAccountDialog } from './add-account';
 
 interface SwapView {
   available: boolean;
@@ -48,17 +49,14 @@ export class AccountsPanel implements UiComponent {
   private readonly list: HTMLElement;
   private readonly status: HTMLElement;
   private readonly autoApi: HTMLInputElement;
-  private readonly loginBox: HTMLElement;
-  private readonly loginLink: HTMLAnchorElement;
-  private readonly loginCode: HTMLInputElement;
-  private readonly tokenInput: HTMLInputElement;
-  private readonly tokenLabel: HTMLInputElement;
+  /** "+ Adicionar conta" ao lado dos cartões de uso, na barra do topo. */
+  readonly addButton: HTMLButtonElement;
+  private readonly add: AddAccountDialog;
   private readonly adminBits: HTMLElement[] = [];
   private readonly banner: HTMLElement;
   private readonly bannerText: HTMLElement;
   private readonly bannerBtn: HTMLButtonElement;
   private view: SwapView | undefined;
-  private loginId = '';
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
 
@@ -75,28 +73,10 @@ export class AccountsPanel implements UiComponent {
       this.autoApi,
       h('span', { text: tr('Quando a assinatura ativa esgotar, usar sozinho a conta de chave de API (paga por uso) e voltar quando a assinatura tiver folga.') }),
     );
-    this.loginLink = h('a', { class: 'ui-btn', attrs: { target: '_blank', rel: 'noopener noreferrer' } }, tr('1. Abrir o login do Claude')) as HTMLAnchorElement;
-    this.loginCode = h('input', { class: 'ui-rename__input', type: 'text', attrs: { placeholder: tr('2. Cole aqui o código que o Claude mostrou'), autocomplete: 'off', spellcheck: 'false' } });
-    const finish = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', on: { click: () => void this.finishLogin() } }, tr('3. Concluir'));
-    const cancel = h('button', { class: 'ui-btn', type: 'button', on: { click: () => void this.cancelLogin() } }, tr('Cancelar'));
-    this.loginBox = h(
-      'div',
-      { class: 'ui-acc__login', hidden: true },
-      h('p', { class: 'ui-rename__hint', text: tr('Entre no navegador com a conta que vai para o banco. O login acontece numa pasta separada: a conta ativa e os agentes rodando não mudam.') }),
-      this.loginLink,
-      this.loginCode,
-      h('div', { class: 'ui-agents__actions' }, cancel, finish),
-    );
-    const connect = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', on: { click: () => void this.startLogin() } }, tr('+ Conectar conta'));
-    this.tokenInput = h('input', { class: 'ui-rename__input', type: 'password', attrs: { placeholder: 'sk-ant-api03-…', autocomplete: 'off' } });
-    this.tokenLabel = h('input', { class: 'ui-rename__input', type: 'text', attrs: { placeholder: tr('Nome (opcional), ex.: api-empresa'), autocomplete: 'off' } });
-    const addToken = h('button', { class: 'ui-btn', type: 'button', on: { click: () => void this.addToken() } }, tr('Adicionar chave de API'));
-    for (const i of [this.loginCode, this.tokenInput, this.tokenLabel]) {
-      i.addEventListener('keydown', (e) => e.stopPropagation());
-      i.addEventListener('keyup', (e) => e.stopPropagation());
-    }
-    const tokenBox = h('details', { class: 'ui-acc__token' }, h('summary', { text: tr('Chave de API (Console)') }), h('div', { class: 'ui-agents__row' }, this.tokenInput, this.tokenLabel), addToken);
-    const admin = h('div', { class: 'ui-acc__admin' }, h('div', { class: 'ui-agents__actions' }, connect), this.loginBox, tokenBox, autoRow);
+    this.add = new AddAccountDialog(ctx.root, () => void this.load());
+    const addInside = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
+    this.addButton = h('button', { class: 'ui-acc-add', type: 'button', hidden: true, attrs: { title: tr('Adicionar uma conta do Claude ao banco (claude-swap)') }, on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
+    const admin = h('div', { class: 'ui-acc__admin' }, h('div', { class: 'ui-agents__actions' }, addInside), autoRow);
     this.adminBits.push(admin);
     const refresh = h('button', { class: 'ui-btn', type: 'button', on: { click: () => void this.act(() => api<SwapView>('/api/swap/refresh', 'POST', {})) } }, tr('Atualizar'));
     const close = iconButton(ICONS.close, tr('Fechar'), () => this.dialog.close(), 'ui-icon-btn--sm');
@@ -116,6 +96,7 @@ export class AccountsPanel implements UiComponent {
   render(): void {
     const can = access().spawn && !this.ctx.store.mock && !this.ctx.store.replaying;
     setHidden(this.button, !can);
+    setHidden(this.addButton, !can || !this.isAdmin());
     if (can && !this.timer) {
       void this.load();
       this.timer = setInterval(() => void this.load(), POLL_MS);
@@ -153,7 +134,7 @@ export class AccountsPanel implements UiComponent {
     this.autoApi.checked = v.settings.autoApi;
     this.button.classList.toggle('has-warning', !!v.warning);
     if (!v.accounts.length) {
-      this.list.replaceChildren(h('p', { class: 'ui-rename__hint', text: v.available ? tr('Nenhuma conta no banco ainda. Conecte a primeira (ou rode cswap add no computador).') : tr('O computador dos agentes não está conectado (npm run codex:bridge).') }));
+      this.list.replaceChildren(h('p', { class: 'ui-rename__hint', text: v.available ? tr('Nenhuma conta no banco ainda. Clique em + Adicionar conta.') : tr('O computador dos agentes não está conectado (npm run codex:bridge).') }));
     } else this.list.replaceChildren(...v.accounts.map((a) => this.row(a)));
     this.paintBanner();
   }
@@ -252,50 +233,9 @@ export class AccountsPanel implements UiComponent {
     }
   }
 
-  private async startLogin(): Promise<void> {
-    this.say(tr('Preparando o login…'));
-    try {
-      const r = await api<{ id: string; url: string }>('/api/swap/login/start', 'POST', {});
-      this.loginId = r.id;
-      this.loginLink.href = r.url;
-      this.loginCode.value = '';
-      setHidden(this.loginBox, false);
-      this.say('');
-    } catch (err) {
-      this.say((err as Error).message, true);
-    }
-  }
-
-  private async finishLogin(): Promise<void> {
-    if (!this.loginId) return;
-    this.say(tr('Concluindo o login e guardando a conta…'));
-    try {
-      const r = await api<{ added?: { number: number; email: string }; view: SwapView }>('/api/swap/login/finish', 'POST', { loginId: this.loginId, code: this.loginCode.value });
-      this.loginId = '';
-      this.loginCode.value = '';
-      setHidden(this.loginBox, true);
-      this.view = r.view;
-      this.paint();
-      this.say(r.added ? tr('Conta {0} ({1}) no banco.', [r.added.number, r.added.email]) : tr('Conta guardada.'));
-    } catch (err) {
-      this.say((err as Error).message, true);
-    }
-  }
-
-  private async cancelLogin(): Promise<void> {
-    const id = this.loginId;
-    this.loginId = '';
-    setHidden(this.loginBox, true);
-    if (id) await api('/api/swap/login/cancel', 'POST', { loginId: id }).catch(() => undefined);
-    this.say('');
-  }
-
-  private async addToken(): Promise<void> {
-    const token = this.tokenInput.value.trim();
-    if (!token) return;
-    const label2 = this.tokenLabel.value.trim();
-    this.tokenInput.value = '';
-    await this.act(() => api<SwapView>('/api/swap/token', 'POST', { token, ...(label2 ? { label: label2 } : {}) }));
+  /** Abre a tela "Adicionar conta" (por cima da tela Contas, se ela estiver aberta). */
+  openAdd(): void {
+    this.add.open();
   }
 
   private say(text: string, error = false): void {

@@ -36,6 +36,10 @@ const fakeSwap = (accounts: Array<{ number: number; five?: number; api?: boolean
       loginStart: async () => ({ ok: true as const, data: { login: { id: '00000000-0000-4000-8000-000000000000', url: 'https://claude.com/cai/oauth/authorize?x=1' } } }),
       loginFinish: async () => ({ ok: true as const, data: { added: { number: 2, email: 'c2@x.com' } } }),
       loginCancel: () => ({ ok: true as const, data: {} }),
+      setAlias: async (n: number, name: string) => {
+        calls.push(`alias ${n} ${name}`);
+        return { ok: true as const, data: {} };
+      },
     },
   };
 };
@@ -77,8 +81,12 @@ describe('banco de contas no servidor', () => {
     expect(parseProjectJob({ kind: 'swap-token', token: 'nao-e-chave' })).toHaveProperty('error');
     const f = fakeSwap([{ number: 1, five: 10 }]);
     const { bank, projects } = bankWith(f);
-    await bank.addToken('sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    const r = await bank.addToken('sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(r.added).toEqual({ number: 9, email: 'api-key-9@token.local' });
     expect(f.calls).toContain('token sk-ant-api');
+    await bank.setAlias(1, 'principal');
+    expect(f.calls).toContain('alias 1 principal');
+    expect(parseProjectJob({ kind: 'swap-alias', target: 1, name: 'com espaço' })).toHaveProperty('error');
     const stored = [...(projects as unknown as { entries: Map<string, unknown> }).entries.values()];
     expect(stored.length).toBeGreaterThan(0);
     expect(JSON.stringify(stored)).not.toContain('sk-ant-api03');

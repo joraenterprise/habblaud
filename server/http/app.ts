@@ -731,6 +731,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
                 return sendJson(res, 200, await bank.switchTo(Number(b.target)));
               case '/api/swap/token':
                 return sendJson(res, 200, await bank.addToken(String(b.token ?? ''), typeof b.label === 'string' ? b.label : undefined));
+              case '/api/swap/alias':
+                return sendJson(res, 200, await bank.setAlias(Number(b.target), String(b.name ?? '')));
               case '/api/swap/login/start':
                 return sendJson(res, 200, await bank.loginStart());
               case '/api/swap/login/finish':
