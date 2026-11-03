@@ -8,6 +8,10 @@ const fakeSwap = (accounts: Array<{ number: number; five?: number; api?: boolean
   let current = active;
   return {
     calls,
+    /** Simula o computador sem conta do banco ativa (0) ou outra conta ativa. */
+    setActive: (n: number) => {
+      current = n;
+    },
     swap: {
       list: async () => {
         calls.push('list');
@@ -75,6 +79,29 @@ describe('banco de contas no servidor', () => {
     accounts[0].five = 10;
     await bank.refresh();
     expect(f.calls.at(-2)).toBe('switch 1');
+  });
+
+  it('mantém o login: sem conta do banco ativa, volta para a última ativa (e não insiste se falhar)', async () => {
+    const f = fakeSwap([{ number: 1, five: 30 }, { number: 2, five: 10 }]);
+    const { bank } = bankWith(f);
+    await bank.refresh();
+    f.setActive(0);
+    await bank.refresh();
+    expect(f.calls).toContain('switch 1');
+    expect(f.calls).not.toContain('switch 2');
+    expect(bank.view().accounts.find((a) => a.active)?.number).toBe(1);
+    expect(bank.view().lastHeal?.to).toBe(1);
+    // Outra conta do banco ativa (alguém trocou): é a escolha de alguém, o banco só passa a lembrar dela.
+    f.setActive(2);
+    const before = f.calls.length;
+    await bank.refresh();
+    expect(f.calls.slice(before)).toEqual(['list']);
+    // Desligado: não restaura.
+    bank.setSettings({ keepLogin: false });
+    f.setActive(0);
+    const n = f.calls.length;
+    await bank.refresh();
+    expect(f.calls.slice(n)).toEqual(['list']);
   });
 
   it('chave de API: só no formato certo e some da memória depois de entregue', async () => {

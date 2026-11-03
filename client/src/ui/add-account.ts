@@ -38,6 +38,7 @@ export class AddAccountDialog {
   private readonly code: HTMLInputElement;
   private readonly token: HTMLInputElement;
   private readonly tokenName: HTMLInputElement;
+  private readonly tokenLead: HTMLElement;
   private readonly doneTitle: HTMLElement;
   private readonly alias: HTMLInputElement;
   private readonly useNow: HTMLInputElement;
@@ -64,7 +65,8 @@ export class AddAccountDialog {
         'div',
         { class: 'ui-add__choices' },
         choice(tr('Assinatura do Claude'), tr('Pro, Max ou assento do Team. Você entra com a conta no navegador e cola o código.'), () => void this.startLogin()),
-        choice(tr('Chave de API (Console)'), tr('Uma chave sk-ant-… do Console. Sem cota de assinatura: cobra pelo uso.'), () => this.go('token')),
+        choice(tr('Login de 1 ano (recomendado)'), tr('Token da assinatura gerado com claude setup-token. Não vence nem cai quando alguém entra com outra conta.'), () => this.tokenMode('oat')),
+        choice(tr('Chave de API (Console)'), tr('Uma chave sk-ant-… do Console. Sem cota de assinatura: cobra pelo uso.'), () => this.tokenMode('api')),
       ),
     );
 
@@ -90,10 +92,12 @@ export class AddAccountDialog {
     // 2b. Chave de API
     this.token = h('input', { class: 'ui-rename__input', type: 'password', attrs: { placeholder: 'sk-ant-api03-…', autocomplete: 'off', 'aria-label': tr('Chave de API') } });
     this.tokenName = h('input', { class: 'ui-rename__input', type: 'text', attrs: { placeholder: tr('Nome da conta (opcional), ex.: api-empresa'), autocomplete: 'off' } });
+    this.tokenLead = h('div', { class: 'ui-add__pane' });
+    this.setTokenKind('api');
     const tokenPane = h(
       'div',
       { class: 'ui-add__pane' },
-      h('p', { class: 'ui-add__lead', text: tr('Cole a chave de API do Console (crie uma chave de um workspace só).') }),
+      this.tokenLead,
       this.token,
       this.tokenName,
       h('p', { class: 'ui-rename__hint', text: tr('A chave vai direto para o claude-swap do computador e não fica guardada no Habblaud.') }),
@@ -142,6 +146,34 @@ export class AddAccountDialog {
     this.useNow.checked = false;
     this.go('type');
     if (!this.el.open) this.el.showModal();
+  }
+
+  /** O passo da chave serve para os dois tipos: token de 1 ano da assinatura (setup-token) ou chave de API. */
+  private tokenMode(kind: 'oat' | 'api'): void {
+    this.setTokenKind(kind);
+    this.go('token');
+  }
+
+  private setTokenKind(kind: 'oat' | 'api'): void {
+    if (kind === 'oat') {
+      this.tokenLead.replaceChildren(
+        h('p', { class: 'ui-add__lead', text: tr('Gere um login de 1 ano da assinatura e cole aqui.') }),
+        h(
+          'ol',
+          { class: 'ui-add__howto' },
+          h('li', {}, h('span', { text: tr('Num terminal do computador, rode: claude setup-token') })),
+          h('li', {}, h('span', { text: tr('Entre no navegador com a conta que vai para o banco e autorize.') })),
+          h('li', {}, h('span', { text: tr('O terminal mostra um token sk-ant-oat01-…: copie e cole abaixo.') })),
+        ),
+        h('p', { class: 'ui-rename__hint', text: tr('Vale por 1 ano e não depende do login do Claude Code: não vence a cada poucas horas nem cai quando alguém entra com outra conta. Só serve para rodar agentes (a tela Contas não mostra o uso dele).') }),
+      );
+      this.token.placeholder = 'sk-ant-oat01-…';
+      this.token.setAttribute('aria-label', tr('Token de 1 ano'));
+    } else {
+      this.tokenLead.replaceChildren(h('p', { class: 'ui-add__lead', text: tr('Cole a chave de API do Console (crie uma chave de um workspace só).') }));
+      this.token.placeholder = 'sk-ant-api03-…';
+      this.token.setAttribute('aria-label', tr('Chave de API'));
+    }
   }
 
   private go(step: Step): void {

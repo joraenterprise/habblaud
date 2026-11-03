@@ -15,7 +15,8 @@ interface SwapView {
   accounts: SwapAccount[];
   fetchedAt?: number;
   lastError?: string;
-  settings: { autoApi: boolean };
+  settings: { autoApi: boolean; keepLogin: boolean };
+  lastHeal?: { at: number; to: number };
   warning?: { active: number; suggestion?: number };
   lastAuto?: { at: number; from: number; to: number };
 }
@@ -49,6 +50,7 @@ export class AccountsPanel implements UiComponent {
   private readonly list: HTMLElement;
   private readonly status: HTMLElement;
   private readonly autoApi: HTMLInputElement;
+  private readonly keepLogin: HTMLInputElement;
   /** "+ Adicionar conta" ao lado dos cartões de uso, na barra do topo. */
   readonly addButton: HTMLButtonElement;
   /** "Trocar conta" na barra do topo: aparece com a conta ativa a partir de SWAP_PCT; troca só no clique. */
@@ -75,11 +77,19 @@ export class AccountsPanel implements UiComponent {
       this.autoApi,
       h('span', { text: tr('Quando a assinatura ativa esgotar, usar sozinho a conta de chave de API (paga por uso) e voltar quando a assinatura tiver folga.') }),
     );
+    this.keepLogin = h('input', { type: 'checkbox', attrs: { id: 'ui-acc-keep' } });
+    this.keepLogin.addEventListener('change', () => void this.act(() => api<SwapView>('/api/swap/settings', 'PUT', { keepLogin: this.keepLogin.checked })));
+    const keepRow = h(
+      'label',
+      { class: 'ui-proj__check ui-acc__auto', attrs: { for: 'ui-acc-keep' } },
+      this.keepLogin,
+      h('span', { text: tr('Manter o login: se o computador ficar sem conta do banco ativa (login vencido, outra conta entrou no Claude Code), voltar sozinho para a última conta do banco que estava ativa.') }),
+    );
     this.swapButton = h('button', { class: 'ui-acc-swap', type: 'button', hidden: true, on: { click: () => this.swapNow() } });
     this.add = new AddAccountDialog(ctx.root, () => void this.load());
     const addInside = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow', type: 'button', on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
     this.addButton = h('button', { class: 'ui-acc-add', type: 'button', hidden: true, attrs: { title: tr('Adicionar uma conta do Claude ao banco (claude-swap)') }, on: { click: () => this.openAdd() } }, tr('+ Adicionar conta'));
-    const admin = h('div', { class: 'ui-acc__admin' }, h('div', { class: 'ui-agents__actions' }, addInside), autoRow);
+    const admin = h('div', { class: 'ui-acc__admin' }, h('div', { class: 'ui-agents__actions' }, addInside), keepRow, autoRow);
     this.adminBits.push(admin);
     const refresh = h('button', { class: 'ui-btn', type: 'button', on: { click: () => void this.act(() => api<SwapView>('/api/swap/refresh', 'POST', {})) } }, tr('Atualizar'));
     const close = iconButton(ICONS.close, tr('Fechar'), () => this.dialog.close(), 'ui-icon-btn--sm');
@@ -135,6 +145,7 @@ export class AccountsPanel implements UiComponent {
     if (!v) return;
     for (const el of this.adminBits) setHidden(el, !this.isAdmin());
     this.autoApi.checked = v.settings.autoApi;
+    this.keepLogin.checked = v.settings.keepLogin;
     this.button.classList.toggle('has-warning', !!v.warning);
     if (!v.accounts.length) {
       this.list.replaceChildren(h('p', { class: 'ui-rename__hint', text: v.available ? tr('Nenhuma conta no banco ainda. Clique em + Adicionar conta.') : tr('O computador dos agentes não está conectado (npm run codex:bridge).') }));

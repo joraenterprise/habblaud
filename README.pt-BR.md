@@ -273,6 +273,12 @@ O botão **Contas** (cartões, na barra do topo) mostra o banco de contas do
 - **Chave de API (Console):** cadastra uma conta paga pelo uso.
 - **Aviso de cota:** acima de 90% da janela, o escritório avisa e sugere a conta com mais folga. A troca entre
   assinaturas é sempre um clique de alguém.
+- **Manter o login (ligado por padrão):** se o computador ficar sem nenhuma conta do banco ativa (login vencido, ou
+  alguém entrou com outra conta no Claude Code), o banco volta sozinho para a última conta do banco que estava ativa.
+  É a mesma conta de antes, não um rodízio. Dá para desligar na tela Contas.
+- **Login de 1 ano:** em "+ Adicionar conta" → "Login de 1 ano", cole o token que o `claude setup-token` gera. Ele não
+  vence a cada poucas horas nem depende do refresh do login (que gira e pode ser invalidado por outra cópia da conta).
+  O uso (5 h / 7 dias) dessa conta não aparece na tela Contas.
 - **Botão "Trocar conta" (96%):** com a conta ativa a partir de 96% da janela, aparece na barra do topo um botão que
   troca (pelo `cswap switch`, depois de confirmar) para a assinatura com mais folga, ou para a conta de chave de API se
   nenhuma tiver. O Habblaud não troca sozinho: só no clique.

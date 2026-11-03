@@ -1,7 +1,9 @@
 // Banco de contas no servidor (shared/swap.ts): guarda a última lista do claude-swap, atualiza a cada poucos minutos,
 // e manda ao computador (pedidos swap-* de projects/projects.ts) o que alguém pediu: trocar a conta ativa, conectar
 // uma conta pelo login do Claude, cadastrar uma chave de API. A única troca que acontece sozinha é a de uma assinatura
-// esgotada para uma conta de chave de API (e a volta), e só com essa opção ligada (<dataDir>/swap.json).
+// esgotada para uma conta de chave de API (e a volta), e só com essa opção ligada (<dataDir>/swap.json). Fora isso, o
+// banco só "mantém o login": se o computador ficar sem nenhuma conta do banco ativa (login vencido, alguém entrou com
+// outra conta no Claude Code), ele volta para a última conta do banco que estava ativa. Não é rodízio: é a mesma conta.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { apiFallbackDecision, needsWarning, parseSwapAccounts, suggestTarget, type SwapAccount } from '../../shared/swap';
@@ -10,11 +12,15 @@ import { errMsg, log } from '../log';
 import type { ProjectJobInfo, ProjectService } from '../projects/projects';
 
 export const REFRESH_MS = 2 * 60_000;
+/** Entre duas tentativas de restaurar o login (se a primeira falhou, não insiste a cada volta). */
+const HEAL_GAP_MS = 5 * 60_000;
 const JOB_WAIT_MS = 120_000;
 
 export interface SwapSettings {
   /** Assinatura esgotada -> conta de chave de API (e volta quando ela tiver folga). Desligado por padrão. */
   autoApi: boolean;
+  /** Sem nenhuma conta do banco ativa, voltar para a última que estava ativa. Ligado por padrão. */
+  keepLogin: boolean;
 }
 
 export interface SwapView {
@@ -27,20 +33,26 @@ export interface SwapView {
   warning?: { active: number; suggestion?: number };
   /** A última troca automática para a API (ou a volta), para o escritório mostrar. */
   lastAuto?: { at: number; from: number; to: number };
+  /** A última vez que o banco restaurou o login (e para qual conta). */
+  lastHeal?: { at: number; to: number };
 }
 
 interface Saved {
   settings: SwapSettings;
   returnTo?: number;
   lastAuto?: SwapView['lastAuto'];
+  /** A última conta do banco vista ativa: para onde o "manter o login" volta. */
+  keep?: number;
+  lastHeal?: SwapView['lastHeal'];
 }
 
 export class AccountBank {
   private accounts: SwapAccount[] = [];
   private fetchedAt?: number;
   private lastError?: string;
-  private saved: Saved = { settings: { autoApi: false } };
+  private saved: Saved = { settings: { autoApi: false, keepLogin: true } };
   private refreshing?: Promise<void>;
+  private healTriedAt = 0;
 
   constructor(
     private readonly o: { projects: ProjectService; file: string | null; now?: () => number },
@@ -62,6 +74,7 @@ export class AccountBank {
       settings: { ...this.saved.settings },
       ...(warn ? { warning: { active: warn.number, ...(suggestTarget(this.accounts) ? { suggestion: suggestTarget(this.accounts)!.number } : {}) } } : {}),
       ...(this.saved.lastAuto ? { lastAuto: this.saved.lastAuto } : {}),
+      ...(this.saved.lastHeal ? { lastHeal: this.saved.lastHeal } : {}),
     };
   }
 
@@ -83,10 +96,39 @@ export class AccountBank {
       this.accounts = parseSwapAccounts(info.swap);
       this.fetchedAt = this.now();
       delete this.lastError;
+      await this.keepLogin();
       await this.autoApi();
     } catch (err) {
       this.lastError = errMsg(err);
     }
+  }
+
+  /** Lembra a conta ativa; sem nenhuma do banco ativa, volta para ela (uma tentativa a cada HEAL_GAP_MS). */
+  private async keepLogin(): Promise<void> {
+    const active = this.accounts.find((a) => a.active);
+    if (active) {
+      if (this.saved.keep !== active.number) {
+        this.saved.keep = active.number;
+        this.save();
+      }
+      return;
+    }
+    const keep = this.accounts.find((a) => a.number === this.saved.keep);
+    if (!this.saved.settings.keepLogin || !keep || keep.disabled || keep.status === 'relogin_required') return;
+    if (this.now() - this.healTriedAt < HEAL_GAP_MS) return;
+    this.healTriedAt = this.now();
+    try {
+      await this.job({ kind: 'swap-switch', target: keep.number });
+    } catch (err) {
+      log.warn(tr('Contas: não consegui restaurar o login da conta {0}: {1}', [keep.number, errMsg(err)]));
+      return;
+    }
+    this.saved.lastHeal = { at: this.now(), to: keep.number };
+    this.save();
+    log.info(tr('Contas: o computador estava sem conta do banco ativa; login da conta {0} restaurado.', [keep.number]));
+    const info = await this.job({ kind: 'swap-list' });
+    this.accounts = parseSwapAccounts(info.swap);
+    this.fetchedAt = this.now();
   }
 
   private async autoApi(): Promise<void> {
@@ -154,6 +196,7 @@ export class AccountBank {
   setSettings(raw: unknown): SwapView {
     const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     if (typeof r.autoApi === 'boolean') this.saved.settings.autoApi = r.autoApi;
+    if (typeof r.keepLogin === 'boolean') this.saved.settings.keepLogin = r.keepLogin;
     this.save();
     if (this.saved.settings.autoApi) void this.refresh();
     return this.view();
@@ -178,7 +221,9 @@ export class AccountBank {
     try {
       const j = JSON.parse(readFileSync(this.o.file, 'utf8')) as Partial<Saved>;
       this.saved = {
-        settings: { autoApi: j.settings?.autoApi === true },
+        settings: { autoApi: j.settings?.autoApi === true, keepLogin: j.settings?.keepLogin !== false },
+        ...(typeof j.keep === 'number' ? { keep: j.keep } : {}),
+        ...(j.lastHeal && typeof j.lastHeal.at === 'number' ? { lastHeal: j.lastHeal } : {}),
         ...(typeof j.returnTo === 'number' ? { returnTo: j.returnTo } : {}),
         ...(j.lastAuto && typeof j.lastAuto.at === 'number' ? { lastAuto: j.lastAuto } : {}),
       };
