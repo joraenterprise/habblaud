@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 import { findWhisper, parseWhisperJson } from './whisper';
 
 describe('Whisper local', () => {
@@ -17,5 +18,10 @@ describe('Whisper local', () => {
     expect(findWhisper({ HOME: '/h', PATH: '' }, (p) => have.has(p))).toHaveProperty('missing');
     expect(findWhisper({ HOME: '/h', PATH: '' }, () => false)).toEqual({ missing: 'whisper-cli (brew install whisper-cpp)' });
     expect(findWhisper({ HOME: '/h', PATH: '', HABBLAUD_DICTATION_LANGS: 'en, pt, xx-bad' }, () => true)).toMatchObject({ langs: ['en', 'pt'] });
+    // Windows: whisper-cli.exe em ~/.local/share/whisper/bin e ffmpeg.exe no Path.
+    const win = new Set([join('/h', '.local', 'share', 'whisper', 'bin', 'whisper-cli.exe'), join('/w', 'ffmpeg.exe'), join('/h', '.local', 'share', 'whisper', 'ggml-small.bin')]);
+    const onWin = findWhisper({ HOME: '/h', Path: '/w' }, (p) => win.has(p));
+    if (process.platform === 'win32') expect(onWin).toMatchObject({ ffmpeg: join('/w', 'ffmpeg.exe') });
+    else expect(onWin).toHaveProperty('missing');
   });
 });

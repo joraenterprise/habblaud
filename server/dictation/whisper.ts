@@ -32,11 +32,13 @@ export interface Transcript {
 
 export type Transcriber = (audio: Buffer, type: string) => Promise<Transcript>;
 
-function onPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
-  for (const dir of (env.PATH ?? '').split(delimiter)) {
+/** No Windows o programa é "nome.exe" (e o PATH pode vir como Path). */
+function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean, win = process.platform === 'win32'): string | undefined {
+  const names = win ? [`${name}.exe`, name] : [name];
+  for (const dir of (env.PATH ?? env.Path ?? '').split(delimiter)) {
     if (!dir) continue;
-    const p = join(dir, name);
-    if (existsSync(p)) return p;
+    const p = names.map((n) => join(dir, n)).find(exists);
+    if (p) return p;
   }
   return undefined;
 }
@@ -44,9 +46,11 @@ function onPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
 /** Acha o whisper-cli, o ffmpeg e o melhor modelo multilíngue; undefined (com o motivo) se faltar algum. */
 export function findWhisper(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync): WhisperSetup | { missing: string } {
   const home = env.HOME || homedir();
-  const bin = env.HABBLAUD_WHISPER_BIN?.trim() || ['/opt/homebrew/bin/whisper-cli', '/usr/local/bin/whisper-cli'].find(exists) || onPath('whisper-cli', env);
+  // Windows: os binários do whisper.cpp (release whisper-bin-x64) ficam em ~/.local/share/whisper/bin.
+  const winBin = join(home, '.local', 'share', 'whisper', 'bin', 'whisper-cli.exe');
+  const bin = env.HABBLAUD_WHISPER_BIN?.trim() || ['/opt/homebrew/bin/whisper-cli', '/usr/local/bin/whisper-cli', winBin].find(exists) || onPath('whisper-cli', env, exists);
   if (!bin || !exists(bin)) return { missing: 'whisper-cli (brew install whisper-cpp)' };
-  const ffmpeg = env.HABBLAUD_FFMPEG_BIN?.trim() || ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'].find(exists) || onPath('ffmpeg', env);
+  const ffmpeg = env.HABBLAUD_FFMPEG_BIN?.trim() || ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'].find(exists) || onPath('ffmpeg', env, exists);
   if (!ffmpeg || !exists(ffmpeg)) return { missing: 'ffmpeg (brew install ffmpeg)' };
   const dirs = [join(home, '.local', 'share', 'whisper'), join(home, '.whisper'), '/opt/homebrew/share/whisper-cpp', '/usr/local/share/whisper-cpp'];
   const model =
